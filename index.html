@@ -165,7 +165,7 @@ function App() {
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [apiKey, setApiKey] = useState(localStorage.getItem("anthropic_api_key") || "");
+  const [apiKey, setApiKey] = useState(localStorage.getItem("groq_api_key") || "");
 
   const [currentId, setCurrentId] = useState(null);
   const [currentIsOwner, setCurrentIsOwner] = useState(false);
@@ -303,7 +303,7 @@ function App() {
     if (!text.trim() || !currentData) return;
     setCheckedIds(findMatchedSkillIds(currentData.skills, text));
     setAnalyzed(true);
-    if (apiKey.trim()) runAiScan(text); else setAiError("Add your Anthropic API key in Settings to enable AI-detected skills (optional).");
+    if (apiKey.trim()) runAiScan(text); else setAiError("Add your free Groq API key in Settings to enable AI-detected skills (optional).");
   }
 
   async function runAiScan(jobText) {
@@ -323,19 +323,34 @@ function App() {
         jobText,
         '"""',
         "",
-        'Return ONLY a JSON array (no markdown) like: [{"name": "...", "category": "..."}]. Only genuinely new items. If none, return [].'
+        'Return ONLY a valid JSON array (no markdown block formatting, no intro prose) like: [{"name": "...", "category": "..."}]. Only genuinely new items. If none, return [].'
       ].join("\n");
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+        headers: { 
+          "Content-Type": "application/json", 
+          "Authorization": `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify({ 
+          model: "llama3-8b-8192", 
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.1
+        }),
       });
+      
       const data = await resp.json();
       if (data.error) throw new Error(data.error.message || "API error");
-      const textBlocks = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
-      const cleaned = textBlocks.replace(/```json|```/g, "").trim();
+      
+      const responseText = data.choices[0].message.content.trim();
       let suggestions = [];
-      try { suggestions = JSON.parse(cleaned); } catch (e) { suggestions = []; }
+      try { 
+        // Handles if the model outputs a root array or an object containing an array
+        const parsed = JSON.parse(responseText);
+        suggestions = Array.isArray(parsed) ? parsed : (parsed.suggestions || parsed.skills || []); 
+      } catch (e) { suggestions = []; }
+      
       if (!Array.isArray(suggestions) || suggestions.length === 0) { setAiLoading(false); return; }
       const existingLower = new Set(currentData.skills.map((s) => s.name.toLowerCase()));
       const toAdd = []; const seen = new Set();
@@ -395,7 +410,7 @@ function App() {
   }
 
   function copyCode() { try { navigator.clipboard.writeText(currentId); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) {} }
-  function saveApiKey(v) { setApiKey(v); localStorage.setItem("anthropic_api_key", v); }
+  function saveApiKey(v) { setApiKey(v); localStorage.setItem("groq_api_key", v); }
 
   const skillsByCategory = useMemo(() => {
     if (!currentData) return {};
@@ -442,9 +457,9 @@ function App() {
       <div class="rounded p-5 space-y-3 max-w-md w-full mx-4" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }} onClick=${(e) => e.stopPropagation()}>
         <div class="st-mono text-sm font-semibold" style=${{ color: PALETTE.text }}>Settings</div>
         <div class="st-sans text-xs" style=${{ color: PALETTE.muted }}>
-          Paste your own Anthropic API key to enable AI-detected new skills. It's stored only in your browser and never sent anywhere except directly to Anthropic's API.
+          Paste your own <b>free Groq API key</b> to enable AI-detected new skills. It is stored only safely inside your browser and never sent anywhere else.
         </div>
-        <input value=${apiKey} onChange=${(e) => saveApiKey(e.target.value)} placeholder="sk-ant-..." type="password"
+        <input value=${apiKey} onChange=${(e) => saveApiKey(e.target.value)} placeholder="gsk_..." type="password"
           class="st-mono text-xs w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
         <${IconButton} onClick=${() => setShowSettings(false)} style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>Done<//>
       </div>
