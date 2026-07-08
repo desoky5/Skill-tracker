@@ -1,566 +1,687 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skill Frequency Tracker</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Robotics Skill Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght=400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+  body { margin: 0; background:#0F1419; }
+  .st-mono { font-family: 'IBM Plex Mono', monospace; }
+  .st-sans { font-family: 'Inter', sans-serif; }
+  .st-tick { background-image: repeating-linear-gradient(90deg, #232B38 0, #232B38 1px, transparent 1px, transparent 8px); }
+</style>
 </head>
-<body class="bg-gray-50 text-gray-800 font-sans min-h-screen">
+<body>
+<div id="root"></div>
 
-    <!-- Header Navigation -->
-    <header class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <div class="bg-blue-600 text-white p-2 rounded-lg shadow-md">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
-                </div>
-                <h1 class="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Robotics Skill Tracker</h1>
-            </div>
-            
-            <div class="flex items-center space-x-4">
-                <!-- Config Toggle Button -->
-                <button id="toggleConfigBtn" class="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                </button>
-                <!-- Firebase Auth Button -->
-                <button id="authBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 h-10 rounded-lg text-sm font-semibold transition flex items-center space-x-2 shadow-sm">
-                    <span>Sign In with Google</span>
-                </button>
-                <div id="userProfile" class="hidden flex items-center space-x-3">
-                    <img id="userAvatar" class="w-8 h-8 rounded-full border border-gray-300" src="" alt="Avatar">
-                    <span id="userName" class="text-sm font-medium text-gray-700 hidden sm:inline"></span>
-                    <button id="signOutBtn" class="text-xs text-red-600 hover:underline">Sign Out</button>
-                </div>
-            </div>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18",
+    "react-dom/client": "https://esm.sh/react-dom@18/client",
+    "htm": "https://esm.sh/htm@3",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"
+  }
+}
+</script>
+
+<script type="module">
+import React, { useState, useEffect, useMemo } from "react";
+import { createRoot } from "react-dom/client";
+import htm from "htm";
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+
+const html = htm.bind(React.createElement);
+
+/* ============ FIREBASE CONFIG ============ */
+const firebaseConfig = {
+  apiKey: "AIzaSyA7f95OKms0oMdUzsnE4e_2NBdlLQJjbWs",
+  authDomain: "skill-frequency-tracker.firebaseapp.com",
+  projectId: "skill-frequency-tracker",
+  storageBucket: "skill-frequency-tracker.firebasestorage.app",
+  messagingSenderId: "654121219345",
+  appId: "1:654121219345:web:58c70d14e71679964388b0",
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
+/* ---------- design tokens ---------- */
+const PALETTE = {
+  bg: "#0F1419", panel: "#161D27", panel2: "#1B2431", line: "#232B38",
+  text: "#E4E9F0", muted: "#8A96A6", faint: "#4B5666", danger: "#FB7185",
+};
+const CATEGORY_COLORS = {
+  "Programming Languages": "#F5A623",
+  "Tools & Frameworks": "#4FD1C5",
+  "Simulation Programs": "#A78BFA",
+  "Concepts & Methods": "#FB7185",
+  "Preferences & Notices": "#94A3B8",
+};
+const DEFAULT_CATEGORIES = Object.keys(CATEGORY_COLORS);
+const CARD_ACCENTS = ["#F5A623", "#4FD1C5", "#A78BFA", "#FB7185", "#60A5FA", "#4ADE80"];
+
+const SEED_SKILLS = [
+  { name: "C++", category: "Programming Languages" }, { name: "Python", category: "Programming Languages" },
+  { name: "C", category: "Programming Languages" }, { name: "MATLAB", category: "Programming Languages" },
+  { name: "Assembly", category: "Programming Languages" }, { name: "Bash", category: "Programming Languages" },
+  { name: "ROS", category: "Tools & Frameworks" }, { name: "ROS2", category: "Tools & Frameworks" },
+  { name: "Git", category: "Tools & Frameworks" }, { name: "Docker", category: "Tools & Frameworks" },
+  { name: "Linux", category: "Tools & Frameworks" }, { name: "OpenCV", category: "Tools & Frameworks" },
+  { name: "STM32", category: "Tools & Frameworks" }, { name: "Arduino", category: "Tools & Frameworks" },
+  { name: "CAN Bus", category: "Tools & Frameworks" }, { name: "I2C", category: "Tools & Frameworks" },
+  { name: "SPI", category: "Tools & Frameworks" }, { name: "UART", category: "Tools & Frameworks" },
+  { name: "RTOS", category: "Tools & Frameworks" }, { name: "Nav2", category: "Tools & Frameworks" },
+  { name: "SolidWorks", category: "Tools & Frameworks" }, { name: "PCB Design", category: "Tools & Frameworks" },
+  { name: "Gazebo", category: "Simulation Programs" }, { name: "RViz", category: "Simulation Programs" },
+  { name: "Webots", category: "Simulation Programs" }, { name: "Simulink", category: "Simulation Programs" },
+  { name: "CoppeliaSim", category: "Simulation Programs" }, { name: "Isaac Sim", category: "Simulation Programs" },
+  { name: "Unity", category: "Simulation Programs" },
+  { name: "SLAM", category: "Concepts & Methods" }, { name: "Kalman Filter", category: "Concepts & Methods" },
+  { name: "PID Control", category: "Concepts & Methods" }, { name: "Kinematics", category: "Concepts & Methods" },
+  { name: "Computer Vision", category: "Concepts & Methods" }, { name: "Machine Learning", category: "Concepts & Methods" },
+  { name: "Sensor Fusion", category: "Concepts & Methods" }, { name: "Path Planning", category: "Concepts & Methods" },
+  { name: "Internship in related field preferred", category: "Preferences & Notices" },
+  { name: "Industry experience preferred", category: "Preferences & Notices" },
+  { name: "Willing to relocate", category: "Preferences & Notices" },
+  { name: "Master's degree preferred", category: "Preferences & Notices" },
+  { name: "Security clearance eligible", category: "Preferences & Notices" },
+  { name: "Portfolio/GitHub required", category: "Preferences & Notices" },
+];
+
+function genId(prefix) { return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8); }
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function genShareCode() { let out = ""; for (let i = 0; i < 6; i++) out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return out; }
+function accentForId(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return CARD_ACCENTS[h % CARD_ACCENTS.length]; }
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function buildSeedDashboard(name) {
+  const skills = SEED_SKILLS.map((s) => ({ id: genId("skill"), name: s.name, category: s.category, aliases: [], count: 0, jobIds: [] }));
+  return { name, categories: [...DEFAULT_CATEGORIES], skills, jobs: [], createdAt: new Date().toISOString() };
+}
+
+function findMatchedSkillIds(skills, text) {
+  const matched = new Set();
+  skills.forEach((s) => {
+    try {
+      const p = new RegExp("(?<![a-zA-Z0-9])" + escapeRegex(s.name) + "(?![a-zA-Z0-9])", "i");
+      if (p.test(text)) matched.add(s.id);
+    } catch (e) { if (text.toLowerCase().includes(s.name.toLowerCase())) matched.add(s.id); }
+  });
+  return matched;
+}
+
+/* ---------- Firestore-backed storage helpers ---------- */
+async function getUserDashboards(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? (snap.data().dashboards || []) : [];
+}
+async function setUserDashboards(uid, list) {
+  await setDoc(doc(db, "users", uid), { dashboards: list });
+}
+async function getDashboard(code) {
+  const snap = await getDoc(doc(db, "dashboards", code));
+  return snap.exists() ? snap.data() : null;
+}
+async function setDashboard(code, data) {
+  await setDoc(doc(db, "dashboards", code), data);
+}
+async function deleteDashboard(code) {
+  await deleteDoc(doc(db, "dashboards", code));
+}
+
+function IconButton(props) {
+  const { children, className, ...rest } = props;
+  return html`<button ...${rest} class="st-mono text-xs px-3 py-1.5 rounded transition-opacity hover:opacity-80 ${className || ""}">${children}</button>`;
+}
+
+function App() {
+  const [uid, setUid] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const [screen, setScreen] = useState("home");
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [homeError, setHomeError] = useState("");
+  const [myDashboards, setMyDashboards] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [newDashName, setNewDashName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [apiKey, setApiKey] = useState(localStorage.getItem("groq_api_key") || "");
+
+  const [currentId, setCurrentId] = useState(null);
+  const [currentIsOwner, setCurrentIsOwner] = useState(false);
+  const [currentData, setCurrentData] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashError, setDashError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState("dashboard");
+
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [url, setUrl] = useState("");
+  const [text, setText] = useState("");
+  const [analyzed, setAnalyzed] = useState(false);
+  const [checkedIds, setCheckedIds] = useState(new Set());
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillCategory, setNewSkillCategory] = useState(DEFAULT_CATEGORIES[0]);
+  const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiNewIds, setAiNewIds] = useState(new Set());
+
+  const [expandedSkill, setExpandedSkill] = useState(null);
+  const [expandedJob, setExpandedJob] = useState(null);
+  const [logFilter, setLogFilter] = useState("");
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) { setUid(u.uid); setUserProfile({ name: u.displayName, photo: u.photoURL, email: u.email }); }
+      else { setUid(null); setUserProfile(null); }
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  async function handleGoogleSignIn() {
+    setSigningIn(true); setAuthError("");
+    try { await signInWithPopup(auth, googleProvider); }
+    catch (e) { setAuthError("Sign-in failed: " + e.message); }
+    finally { setSigningIn(false); }
+  }
+
+  async function handleSignOut() {
+    try { await signOut(auth); setScreen("home"); setCurrentId(null); setCurrentData(null); }
+    catch (e) { setAuthError("Sign-out failed: " + e.message); }
+  }
+
+  useEffect(() => { if (uid) loadHome(); }, [uid]);
+
+  async function loadHome() {
+    setHomeLoading(true); setHomeError("");
+    try {
+      const list = await getUserDashboards(uid);
+      setMyDashboards(list);
+      const pairs = await Promise.all(list.map(async (d) => {
+        try { const data = await getDashboard(d.id); return [d.id, data ? data.jobs.length : null]; }
+        catch (e) { return [d.id, null]; }
+      }));
+      const cm = {}; pairs.forEach(([id, c]) => (cm[id] = c)); setCounts(cm);
+    } catch (e) { setHomeError("Couldn't load your dashboards: " + e.message); }
+    finally { setHomeLoading(false); }
+  }
+
+  async function persistMyList(list) {
+    setMyDashboards(list);
+    try { await setUserDashboards(uid, list); }
+    catch (e) { setHomeError("Couldn't save your dashboard list: " + e.message); }
+  }
+
+  async function createDashboard() {
+    const name = newDashName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      let code = genShareCode();
+      for (let i = 0; i < 3; i++) { const existing = await getDashboard(code); if (!existing) break; code = genShareCode(); }
+      await setDashboard(code, buildSeedDashboard(name));
+      const nextList = [...myDashboards, { id: code, name, isOwner: true }];
+      await persistMyList(nextList);
+      setCounts((p) => ({ ...p, [code]: 0 }));
+      setNewDashName(""); setShowCreate(false);
+      openDashboard({ id: code, name, isOwner: true });
+    } catch (e) { setHomeError("Couldn't create dashboard: " + e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function joinDashboard() {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    setBusy(true); setJoinError("");
+    try {
+      const data = await getDashboard(code);
+      if (!data) { setJoinError("No dashboard found with that code."); return; }
+      const already = myDashboards.find((d) => d.id === code);
+      if (already) { openDashboard(already); setShowJoin(false); return; }
+      const nextList = [...myDashboards, { id: code, name: data.name, isOwner: false }];
+      await persistMyList(nextList);
+      setCounts((p) => ({ ...p, [code]: data.jobs.length }));
+      setJoinCode(""); setShowJoin(false);
+      openDashboard({ id: code, name: data.name, isOwner: false });
+    } catch (e) { setJoinError("Couldn't reach that dashboard: " + e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function removeFromMyList(id) { await persistMyList(myDashboards.filter((d) => d.id !== id)); }
+  async function deletePermanently(id) { try { await deleteDashboard(id); } catch (e) {} await removeFromMyList(id); }
+
+  async function openDashboard(entry) {
+    setCurrentId(entry.id); setCurrentIsOwner(entry.isOwner);
+    setScreen("dashboard"); setTab("dashboard"); setDashLoading(true); setDashError("");
+    resetForm();
+    try {
+      const data = await getDashboard(entry.id);
+      if (data) setCurrentData(data);
+      else { setDashError("This dashboard couldn't be found — it may have been deleted."); setCurrentData(null); }
+    } catch (e) { setDashError("Couldn't load this dashboard: " + e.message); setCurrentData(null); }
+    finally { setDashLoading(false); }
+  }
+
+  function backHome() { setScreen("home"); setCurrentId(null); setCurrentData(null); loadHome(); }
+
+  function resetForm() {
+    setTitle(""); setCompany(""); setUrl(""); setText(""); setAnalyzed(false);
+    setCheckedIds(new Set()); setNewSkillName(""); setExpandedSkill(null); setExpandedJob(null);
+    setLogFilter(""); setAiLoading(false); setAiError(""); setAiNewIds(new Set());
+  }
+
+  async function persistCurrent(next) {
+    setCurrentData(next);
+    try { await setDashboard(currentId, next); setDashError(""); }
+    catch (e) { setDashError("Save failed: " + e.message); }
+  }
+
+  function handleAnalyze() {
+    if (!text.trim() || !currentData) return;
+    const prematched = findMatchedSkillIds(currentData.skills, text);
+    setCheckedIds(prematched);
+    setAnalyzed(true);
+    if (apiKey.trim()) runAiScan(text, prematched); else setAiError("Add your free Groq API key in Settings to enable AI-detected skills (optional).");
+  }
+
+  async function runAiScan(jobText, existingMatchedIds) {
+    setAiLoading(true); setAiError("");
+    try {
+      const trackedNames = currentData.skills.map((s) => s.name).join(", ");
+      const categoryList = currentData.categories.join(", ");
+      const prompt = [
+        "You are analyzing a robotics engineering job description to extract specialized technical skills, tools, frameworks, hardware protocols, or libraries that are NOT already in the tracked list.",
+        "",
+        "Already-tracked items (DO NOT extract these or close variants): " + trackedNames,
+        "",
+        "Categories to choose from (pick the best fit): " + categoryList,
+        "",
+        "Job description text:",
+        '"""',
+        jobText,
+        '"""',
+        "",
+        "CRITICAL INSTRUCTION: Return ONLY a valid JSON object matching exactly this layout structure: {\"skills\": [{\"name\": \"...\", \"category\": \"...\"}]}. Do not include markdown wraps or conversational commentary."
+      ].join("\n");
+      
+      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json", 
+          "Authorization": `Bearer ${apiKey.trim()}`
+        },
+        body: JSON.stringify({ 
+          model: "llama-3.3-70b-versatile", 
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: prompt }],
+          temperature: 0.1
+        }),
+      });
+      
+      const resData = await resp.json();
+      if (resData.error) throw new Error(resData.error.message || "API error");
+      
+      const responseText = resData.choices[0].message.content.trim();
+      let suggestions = [];
+      try { 
+        const parsed = JSON.parse(responseText);
+        suggestions = parsed.skills || parsed.suggestions || parsed;
+        if (!Array.isArray(suggestions) && typeof suggestions === 'object') {
+          suggestions = Object.values(suggestions).flat();
+        }
+      } catch (e) { suggestions = []; }
+      
+      if (!Array.isArray(suggestions) || suggestions.length === 0) { setAiLoading(false); return; }
+      const existingLower = new Set(currentData.skills.map((s) => s.name.toLowerCase()));
+      const toAdd = []; const seen = new Set();
+      
+      suggestions.forEach((s) => {
+        if (!s || !s.name) return;
+        const name = String(s.name).trim(); const key = name.toLowerCase();
+        if (!name || existingLower.has(key) || seen.has(key)) return;
+        seen.add(key);
+        toAdd.push({ id: genId("skill"), name, category: (s.category && String(s.category).trim()) || "Concepts & Methods", aliases: [], count: 0, jobIds: [] });
+      });
+      
+      if (toAdd.length === 0) { setAiLoading(false); return; }
+      const newCategories = [...currentData.categories];
+      toAdd.forEach((s) => { if (!newCategories.includes(s.category)) newCategories.push(s.category); });
+      const next = { ...currentData, categories: newCategories, skills: [...currentData.skills, ...toAdd] };
+      await persistCurrent(next);
+      
+      setCheckedIds((prev) => { const n = new Set(prev); toAdd.forEach((s) => n.add(s.id)); return n; });
+      setAiNewIds((prev) => { const n = new Set(prev); toAdd.forEach((s) => n.add(s.id)); return n; });
+    } catch (e) { setAiError("AI scan failed: " + e.message); }
+    finally { setAiLoading(false); }
+  }
+
+  function toggleSkill(id) { setCheckedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
+
+  function handleAddNewSkill() {
+    const name = newSkillName.trim();
+    if (!name || !currentData) return;
+    const existing = currentData.skills.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (existing) { setCheckedIds((p) => new Set(p).add(existing.id)); setNewSkillName(""); return; }
+    const newSkill = { id: genId("skill"), name, category: newSkillCategory, aliases: [], count: 0, jobIds: [] };
+    const next = { ...currentData, skills: [...currentData.skills, newSkill] };
+    persistCurrent(next);
+    setCheckedIds((p) => new Set(p).add(newSkill.id));
+    setNewSkillName("");
+  }
+
+  async function handleSaveJob() {
+    if (!title.trim() || !text.trim() || checkedIds.size === 0 || !currentData) return;
+    setSaving(true);
+    const jobId = genId("job");
+    const job = { id: jobId, title: title.trim(), company: company.trim(), url: url.trim(), dateAdded: new Date().toISOString(), text: text.trim(), skillIds: Array.from(checkedIds) };
+    const nextSkills = currentData.skills.map((s) => checkedIds.has(s.id) ? { ...s, count: s.count + 1, jobIds: [...s.jobIds, jobId] } : s);
+    const next = { ...currentData, skills: nextSkills, jobs: [...currentData.jobs, job] };
+    await persistCurrent(next);
+    setCounts((p) => ({ ...p, [currentId]: next.jobs.length }));
+    setSaving(false); resetForm(); setTab("dashboard");
+  }
+
+  async function handleDeleteJob(jobId) {
+    const job = currentData.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const nextSkills = currentData.skills.map((s) => job.skillIds.includes(s.id) ? { ...s, count: Math.max(0, s.count - 1), jobIds: s.jobIds.filter((id) => id !== jobId) } : s);
+    const nextJobs = currentData.jobs.filter((j) => j.id !== jobId);
+    const next = { ...currentData, skills: nextSkills, jobs: nextJobs };
+    await persistCurrent(next);
+    setCounts((p) => ({ ...p, [currentId]: nextJobs.length }));
+    if (expandedJob === jobId) setExpandedJob(null);
+  }
+
+  function copyCode() { try { navigator.clipboard.writeText(currentId); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) {} }
+  function saveApiKey(v) { setApiKey(v); localStorage.setItem("groq_api_key", v); }
+
+  const skillsByCategory = useMemo(() => {
+    if (!currentData) return {};
+    const map = {}; currentData.categories.forEach((c) => (map[c] = []));
+    currentData.skills.forEach((s) => { (map[s.category] = map[s.category] || []).push(s); });
+    Object.keys(map).forEach((c) => map[c].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)));
+    return map;
+  }, [currentData]);
+
+  const maxCount = useMemo(() => currentData ? Math.max(1, ...currentData.skills.map((s) => s.count)) : 1, [currentData]);
+
+  const filteredJobs = useMemo(() => {
+    if (!currentData) return [];
+    const jobs = [...currentData.jobs].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+    if (!logFilter.trim()) return jobs;
+    const q = logFilter.toLowerCase();
+    return jobs.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q));
+  }, [currentData, logFilter]);
+
+  if (authLoading) return html`<div class="st-mono text-sm p-6 min-h-screen flex items-center justify-center" style=${{ background: PALETTE.bg, color: PALETTE.muted }}>connecting…</div>`;
+
+  if (!uid) {
+    return html`
+      <div class="w-full min-h-screen flex items-center justify-center font-sans" style=${{ background: PALETTE.bg, color: PALETTE.text }}>
+        <div class="rounded p-8 space-y-5 max-w-sm w-full mx-4 text-center" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>skill-frequency tracker</div>
+            <div class="st-mono text-lg font-semibold mt-1">Sign in to continue</div>
+            <div class="st-sans text-xs mt-2" style=${{ color: PALETTE.muted }}>Your dashboards stay tied to your Google account, so they follow you across devices.</div>
+          </div>
+          ${authError && html`<div class="st-mono text-xs" style=${{ color: PALETTE.danger }}>${authError}</div>`}
+          <button onClick=${handleGoogleSignIn} disabled=${signingIn}
+            class="st-sans text-sm w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded font-medium disabled:opacity-50"
+            style=${{ background: "#fff", color: "#1F1F1F" }}>
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.6 3.5 24 3.5 12.7 3.5 3.5 12.7 3.5 24S12.7 44.5 24 44.5 44.5 35.3 44.5 24c0-1.2-.1-2.4-.3-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.6 3.5 24 3.5c-7.7 0-14.3 4.4-17.7 11.2z"/><path fill="#4CAF50" d="M24 44.5c5.5 0 10.4-1.9 14-5.1l-6.5-5.5c-2 1.4-4.6 2.3-7.5 2.3-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 40 16.2 44.5 24 44.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.5 5.5C41.5 36 44.5 30.5 44.5 24c0-1.2-.1-2.4-.3-3.5z"/></svg>
+            ${signingIn ? "Signing in…" : "Sign in with Google"}
+          </button>
         </div>
-    </header>
+      </div>`;
+  }
 
-    <!-- Main Dynamic Interface Layout -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
-        <!-- Cloud Sync Credentials / Config Panel Section (Collapsible) -->
-        <section id="configPanel" class="hidden mb-8 bg-white p-6 rounded-xl border border-gray-200 shadow-sm transition-all duration-300">
-            <h2 class="text-lg font-bold text-gray-900 mb-4 flex items-center"><svg class="w-5 h-5 mr-2 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>API & Database Cloud Sync Settings</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Groq AI API Key</label>
-                    <input type="password" id="groqApiKey" placeholder="gsk_..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <p class="text-xs text-gray-500 mt-1">Stored safely on your browser client local storage data layout structure.</p>
-                </div>
-                <div class="flex items-end">
-                    <button id="saveConfigBtn" class="w-full md:w-auto bg-gray-900 hover:bg-black text-white px-6 py-2 rounded-lg font-semibold transition text-sm">Save Configuration</button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Core Split Screen Dashboard Grid Framework Layout Structure -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            
-            <!-- Left Data Inputs Form Column Control Layout Interface -->
-            <div class="lg:col-span-1 space-y-8">
-                <!-- Text Mining Parsing Input Engine Container Frame Wrapper Module -->
-                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                    <h2 class="text-lg font-bold text-gray-900 mb-2 flex items-center"><svg class="w-5 h-5 mr-2 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"/></svg>Job Spec Parser Engine</h2>
-                    <p class="text-xs text-gray-500 mb-4">Paste job descriptions below. Groq AI scans text content algorithms to extract new technologies or tick counts on existing matrices.</p>
-                    
-                    <textarea id="jobDescriptionInput" rows="10" placeholder="Paste full engineering job details spec requirements matrix description data sheet here..." class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mb-4"></textarea>
-                    
-                    <div class="space-y-2">
-                        <button id="manualMatchBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow-sm flex items-center justify-center space-x-2">
-                            <span>Increment Matches via String Parsing</span>
-                        </button>
-                        <button id="aiScanBtn" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-semibold py-2.5 rounded-lg text-sm transition shadow-md flex items-center justify-center space-x-2">
-                            <span id="aiScanBtnText">🤖 Deep Scan via Groq AI Engine</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Manual Inline Form Element Append Modifiers Container Wrapper Block Component -->
-                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                    <h3 class="text-sm font-bold uppercase tracking-wider text-gray-500 mb-4">Quick Add Custom Skill</h3>
-                    <div class="flex space-x-2">
-                        <input type="text" id="newSkillName" placeholder="e.g., EtherCAT" class="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <button id="addSkillBtn" class="bg-gray-100 hover:bg-gray-200 border border-gray-300 text-gray-700 px-4 rounded-lg text-sm font-medium transition">Add</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Visual Analytics Charts Dynamic Reporting Column Layout Component Grid System Matrix Module Frame -->
-            <div class="lg:col-span-2 space-y-8">
-                <!-- Interactive Chart Data Presentation Shield Framework Canvas Engine Graphic Layer Card -->
-                <div class="bg-white p-6 rounded-xl border border-gray-200 shadow-sm">
-                    <div class="flex items-center justify-between mb-4">
-                        <h2 class="text-lg font-bold text-gray-900 flex items-center"><svg class="w-5 h-5 mr-2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 3.055A9.003 9.003 0 1020.945 13H11V3.055z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z"/></svg>Frequency Domain Analytics</h2>
-                        <button id="resetCountsBtn" class="text-xs text-gray-400 hover:text-red-500 font-medium transition">Clear Counts</button>
-                    </div>
-                    <div class="relative w-full h-80">
-                        <canvas id="skillsChart"></canvas>
-                    </div>
-                </div>
-
-                <!-- Structured Dynamic Native HTML Document Data List Component Rendering Segment Grid Frame Context -->
-                <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                        <h3 class="font-bold text-gray-900 text-sm uppercase tracking-wider">Monitored Robotics Competency Registry</h3>
-                        <span id="totalSkillsCount" class="bg-blue-100 text-blue-800 text-xs px-2.5 py-0.5 rounded-full font-semibold">0 Total</span>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="border-b border-gray-200 text-xs font-semibold uppercase text-gray-400 bg-white">
-                                    <th class="px-6 py-3">Skill Key Name</th>
-                                    <th class="px-6 py-3 text-center">Frequency Hits</th>
-                                    <th class="px-6 py-3 text-right">Actions Management</th>
-                                </tr>
-                            </thead>
-                            <tbody id="skillsTableBody" class="divide-y divide-gray-100 text-sm text-gray-600">
-                                <!-- Dynamic rows insert here programmatically injection system via JavaScript logic -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
+  const settingsPanel = showSettings && html`
+    <div class="fixed inset-0 flex items-center justify-center z-50" style=${{ background: "#000000AA" }} onClick=${() => setShowSettings(false)}>
+      <div class="rounded p-5 space-y-3 max-w-md w-full mx-4" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }} onClick=${(e) => e.stopPropagation()}>
+        <div class="st-mono text-sm font-semibold" style=${{ color: PALETTE.text }}>Settings</div>
+        <div class="st-sans text-xs" style=${{ color: PALETTE.muted }}>
+          Paste your own <b>free Groq API key</b> to enable AI-detected new skills. It is stored safely inside your browser and never sent anywhere else.
         </div>
-    </main>
+        <input value=${apiKey} onChange=${(e) => saveApiKey(e.target.value)} placeholder="gsk_..." type="password"
+          class="st-mono text-xs w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+        <${IconButton} onClick=${() => setShowSettings(false)} style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>Done<//>
+      </div>
+    </div>`;
 
-    <!-- Modular Script Injections Setup Configurations Segment Matrix Elements Layer Block -->
-    <!-- Modular Script Injections Setup Configurations Segment Matrix Elements Layer Block -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-        import { getDatabase, ref, set, get, child, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+  if (screen === "home") {
+    return html`
+      <div style=${{ background: PALETTE.bg, color: PALETTE.text }} class="w-full min-h-screen font-sans">
+        ${settingsPanel}
+        <div style=${{ borderBottom: "1px solid " + PALETTE.line }} class="px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>skill-frequency tracker</div>
+            <div class="st-mono text-lg font-semibold">MY DASHBOARDS</div>
+          </div>
+          <div class="flex gap-2 items-center">
+            ${userProfile && userProfile.name && html`<span class="st-mono text-xs" style=${{ color: PALETTE.muted }}>${userProfile.name}</span>`}
+            <${IconButton} onClick=${() => setShowSettings(true)} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>⚙ Settings<//>
+            <${IconButton} onClick=${() => { setShowJoin(true); setShowCreate(false); }} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.text }}>Join with code<//>
+            <${IconButton} onClick=${() => { setShowCreate(true); setShowJoin(false); }} style=${{ background: "#F5A623", color: "#1A1200", fontWeight: 600 }}>+ New dashboard<//>
+            <${IconButton} onClick=${handleSignOut} style=${{ color: PALETTE.muted }}>Sign out<//>
+          </div>
+        </div>
+        ${homeError && html`<div class="px-5 py-2 st-mono text-xs" style=${{ background: "#2A1A1E", color: PALETTE.danger }}>${homeError}</div>`}
+        <div class="p-5 max-w-3xl mx-auto space-y-4">
+          ${showCreate && html`
+            <div class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+              <div class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>New dashboard — name it after the role</div>
+              <div class="flex gap-2 flex-wrap">
+                <input value=${newDashName} onChange=${(e) => setNewDashName(e.target.value)} placeholder="e.g. Robotics Engineer"
+                  class="st-sans text-sm px-3 py-2 rounded outline-none flex-1 min-w-[220px]" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}
+                  onKeyDown=${(e) => e.key === "Enter" && createDashboard()} />
+                <${IconButton} onClick=${createDashboard} disabled=${!newDashName.trim() || busy} className="disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>${busy ? "Creating…" : "Create"}<//>
+                <${IconButton} onClick=${() => setShowCreate(false)} style=${{ color: PALETTE.muted }}>Cancel<//>
+              </div>
+            </div>`}
+          ${showJoin && html`
+            <div class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+              <div class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>Join a shared dashboard with its code</div>
+              <div class="flex gap-2 flex-wrap">
+                <input value=${joinCode} onChange=${(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="e.g. K7XPQ2" maxlength="6"
+                  class="st-mono text-sm px-3 py-2 rounded outline-none tracking-widest" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text, width: "160px" }}
+                  onKeyDown=${(e) => e.key === "Enter" && joinDashboard()} />
+                <${IconButton} onClick=${joinDashboard} disabled=${!joinCode.trim() || busy} className="disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>${busy ? "Joining…" : "Join"}<//>
+                <${IconButton} onClick=${() => { setShowJoin(false); setJoinError(""); }} style=${{ color: PALETTE.muted }}>Cancel<//>
+              </div>
+              ${joinError && html`<div class="st-mono text-xs" style=${{ color: PALETTE.danger }}>${joinError}</div>`}
+            </div>`}
+          ${homeLoading ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>loading your dashboards…</div>`
+            : myDashboards.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No dashboards yet. Create one for a role you're targeting, or join one someone shared with you.</div>`
+            : html`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                ${myDashboards.map((d) => {
+                  const accent = accentForId(d.id); const count = counts[d.id]; const missing = count === null || count === undefined;
+                  return html`<div key=${d.id} class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line, borderLeft: "3px solid " + accent }}>
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="st-sans text-sm font-semibold">${d.name}</div>
+                        <div class="st-mono text-xs mt-0.5" style=${{ color: PALETTE.muted }}>${missing ? "not found" : count + " posting" + (count === 1 ? "" : "s")} · ${d.isOwner ? "owner" : "member"}</div>
+                      </div>
+                      <span class="st-mono text-xs px-2 py-0.5 rounded" style=${{ background: PALETTE.panel2, color: PALETTE.muted }}>${d.id}</span>
+                    </div>
+                    <div class="flex gap-2 flex-wrap">
+                      <${IconButton} onClick=${() => openDashboard(d)} disabled=${missing} className="disabled:opacity-40" style=${{ background: accent, color: "#101418", fontWeight: 600 }}>Open<//>
+                      <${IconButton} onClick=${() => removeFromMyList(d.id)} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>${d.isOwner ? "Remove from list" : "Leave"}<//>
+                      ${d.isOwner && !missing && html`<${IconButton} onClick=${() => { if (confirm('Permanently delete "' + d.name + '"? This removes it for everyone.')) deletePermanently(d.id); }} style=${{ color: PALETTE.danger }}>Delete for all<//>`}
+                    </div>
+                  </div>`;
+                })}
+              </div>`}
+        </div>
+      </div>`;
+  }
 
-        // Production-Ready Embedded Firebase Access Environment Parameters Config Dataset Config Block Structure
-        const firebaseConfig = {
-            apiKey: "AIzaSyAs7W8T-X3b37X-y66W9P4856E-J7k5v9g",
-            authDomain: "skill-frequency-tracker.firebaseapp.com",
-            databaseURL: "https://skill-frequency-tracker-default-rtdb.firebaseio.com",
-            projectId: "skill-frequency-tracker",
-            storageBucket: "skill-frequency-tracker.appspot.com",
-            messagingSenderId: "593740924736",
-            appId: "1:593740924736:web:8e39f37c469a4d790f19de"
-        };
+  const accent = currentId ? accentForId(currentId) : "#F5A623";
 
-        // Standard Primary Global Inits Instance References Handlers
-        const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
-        const db = getDatabase(app);
-        const provider = new GoogleAuthProvider();
+  return html`
+    <div style=${{ background: PALETTE.bg, color: PALETTE.text }} class="w-full min-h-screen font-sans">
+      ${settingsPanel}
+      <div style=${{ borderBottom: "1px solid " + PALETTE.line }} class="px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <button onClick=${backHome} class="st-mono text-xs px-2 py-1 rounded" style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>← dashboards</button>
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>${currentIsOwner ? "owner" : "member"}</div>
+            <div class="st-mono text-lg font-semibold">${currentData ? currentData.name : "…"}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          ${currentData && html`<div class="st-mono text-xs" style=${{ color: PALETTE.muted }}><span style=${{ color: PALETTE.text, fontWeight: 600 }}>${currentData.jobs.length}</span> postings</div>`}
+          <button onClick=${copyCode} class="st-mono text-xs px-2 py-1 rounded tracking-widest" style=${{ border: "1px solid " + accent, color: accent }}>${copied ? "copied ✓" : "code: " + currentId}</button>
+        </div>
+      </div>
+      ${dashError && html`<div class="px-5 py-2 st-mono text-xs" style=${{ background: "#2A1A1E", color: PALETTE.danger }}>${dashError}</div>`}
+      ${dashLoading ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-mono text-sm">loading dashboard…</div>`
+      : !currentData ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-sans text-sm">${dashError || "This dashboard is unavailable."}</div>`
+      : html`
+        <div class="px-5 pt-4 flex gap-1">
+          ${[{ id: "add", label: "Add Job" }, { id: "dashboard", label: "Dashboard" }, { id: "log", label: "Job Log" }].map((t) => html`
+            <button key=${t.id} onClick=${() => setTab(t.id)} class="st-mono text-xs uppercase tracking-wider px-4 py-2 rounded-t"
+              style=${{ background: tab === t.id ? PALETTE.panel : "transparent", color: tab === t.id ? PALETTE.text : PALETTE.muted, borderBottom: tab === t.id ? "2px solid " + accent : "2px solid transparent" }}>${t.label}</button>`)}
+        </div>
+        <div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px]">
+          ${tab === "add" && html`
+            <div class="max-w-3xl mx-auto space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input value=${title} onChange=${(e) => setTitle(e.target.value)} placeholder="Job title *" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                <input value=${company} onChange=${(e) => setCompany(e.target.value)} placeholder="Company (optional)" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                <input value=${url} onChange=${(e) => setUrl(e.target.value)} placeholder="LinkedIn URL (optional)" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+              </div>
+              <textarea value=${text} onChange=${(e) => { setText(e.target.value); setAnalyzed(false); }} placeholder="Paste the full job description here…" rows="8"
+                class="st-sans text-sm w-full px-3 py-2 rounded outline-none resize-y" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}></textarea>
+              <div class="flex justify-end items-center gap-3">
+                ${aiLoading && html`<span class="st-mono text-xs" style=${{ color: PALETTE.muted }}>🤖 scanning for untracked skills…</span>`}
+                <button onClick=${handleAnalyze} disabled=${!text.trim() || aiLoading} class="st-mono text-xs uppercase tracking-wider px-4 py-2 rounded font-semibold disabled:opacity-40" style=${{ background: "#F5A623", color: "#1A1200" }}>Find skills →</button>
+              </div>
+              ${aiError && html`<div class="st-mono text-xs text-right" style=${{ color: PALETTE.muted }}>${aiError}</div>`}
+              ${analyzed && html`
+                <div class="space-y-4 pt-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                  <div class="st-mono text-xs pt-3" style=${{ color: PALETTE.muted }}>${checkedIds.size} skill${checkedIds.size === 1 ? "" : "s"} selected — uncheck false matches, check anything missed.</div>
+                  ${currentData.categories.map((cat) => {
+                    const list = skillsByCategory[cat] || [];
+                    if (list.length === 0) return null;
+                    const color = CATEGORY_COLORS[cat] || PALETTE.muted;
+                    return html`<div key=${cat}>
+                      <div class="flex items-center gap-2 mb-2"><span class="inline-block w-2 h-2 rounded-full" style=${{ background: color }}></span><span class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>${cat}</span></div>
+                      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        ${list.map((skill) => {
+                          const checked = checkedIds.has(skill.id); const isNew = aiNewIds.has(skill.id);
+                          return html`<label key=${skill.id} class="st-sans text-sm flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer" style=${{ background: checked ? color + "1A" : "transparent", border: "1px solid " + (checked ? color : PALETTE.line) }}>
+                            <input type="checkbox" checked=${checked} onChange=${() => toggleSkill(skill.id)} />
+                            <span style=${{ color: checked ? PALETTE.text : PALETTE.muted }}>${skill.name}</span>
+                            ${isNew && html`<span class="st-mono text-[10px] px-1 rounded" style=${{ background: color + "33", color: color }}>new</span>`}
+                          </label>`;
+                        })}
+                      </div>
+                    </div>`;
+                  })}
+                  <div class="pt-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                    <div class="st-mono text-xs uppercase tracking-wider mb-2" style=${{ color: PALETTE.muted }}>Skill or notice not listed?</div>
+                    <div class="flex flex-wrap gap-2">
+                      <input value=${newSkillName} onChange=${(e) => setNewSkillName(e.target.value)} placeholder="Name" class="st-sans text-sm px-3 py-1.5 rounded outline-none flex-1 min-w-[140px]" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                      <select value=${newSkillCategory} onChange=${(e) => setNewSkillCategory(e.target.value)} class="st-sans text-sm px-3 py-1.5 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}>
+                        ${currentData.categories.map((c) => html`<option key=${c} value=${c}>${c}</option>`)}
+                      </select>
+                      <button onClick=${handleAddNewSkill} disabled=${!newSkillName.trim()} class="st-mono text-xs uppercase px-3 py-1.5 rounded font-semibold disabled:opacity-40" style=${{ background: PALETTE.line, color: PALETTE.text }}>+ Add</button>
+                    </div>
+                  </div>
+                  <div class="flex justify-end pt-2">
+                    <button onClick=${handleSaveJob} disabled=${!title.trim() || checkedIds.size === 0 || saving} class="st-mono text-xs uppercase tracking-wider px-5 py-2.5 rounded font-semibold disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D" }}>${saving ? "Saving…" : "Save posting"}</button>
+                  </div>
+                </div>`}
+            </div>`}
+          ${tab === "dashboard" && html`
+            <div class="max-w-4xl mx-auto space-y-6">
+              ${currentData.jobs.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No postings logged yet.</div>`
+                : currentData.categories.map((cat) => {
+                    const list = (skillsByCategory[cat] || []).filter((s) => s.count > 0);
+                    const color = CATEGORY_COLORS[cat] || PALETTE.muted;
+                    if (list.length === 0) return null;
+                    return html`<div key=${cat}>
+                      <div class="flex items-center gap-2 mb-3"><span class="inline-block w-2 h-2 rounded-full" style=${{ background: color }}></span><span class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>${cat}</span></div>
+                      <div class="space-y-1.5">
+                        ${list.map((skill) => {
+                          const pct = Math.round((skill.count / maxCount) * 100); const isOpen = expandedSkill === skill.id;
+                          return html`<div key=${skill.id}>
+                            <button onClick=${() => setExpandedSkill(isOpen ? null : skill.id)} class="w-full text-left">
+                              <div class="flex items-center gap-3">
+                                <span class="st-sans text-sm w-40 shrink-0 truncate" style=${{ color: PALETTE.text }}>${skill.name}</span>
+                                <div class="st-tick flex-1 h-5 rounded-sm relative overflow-hidden" style=${{ background: PALETTE.panel2 }}>
+                                  <div class="h-full rounded-sm transition-all" style=${{ width: pct + "%", background: color }}></div>
+                                </div>
+                                <span class="st-mono text-xs w-24 text-right shrink-0" style=${{ color: PALETTE.muted }}>${skill.count}/${currentData.jobs.length} posts</span>
+                              </div>
+                            </button>
+                            ${isOpen && html`<div class="mt-1 ml-40 mb-2 pl-3 st-sans text-xs space-y-1" style=${{ borderLeft: "2px solid " + color, color: PALETTE.muted }}>
+                              ${skill.jobIds.map((jid) => {
+                                const job = currentData.jobs.find((j) => j.id === jid);
+                                if (!job) return null;
+                                return html`<div key=${jid} class="cursor-pointer hover:underline" onClick=${() => { setTab("log"); setExpandedJob(jid); }}>${job.title}${job.company ? " — " + job.company : ""}</div>`;
+                              })}
+                            </div>`}
+                          </div>`;
+                        })}
+                      </div>
+                    </div>`;
+                  })}
+            </div>`}
+          ${tab === "log" && html`
+            <div class="max-w-3xl mx-auto space-y-3">
+              <input value=${logFilter} onChange=${(e) => setLogFilter(e.target.value)} placeholder="Filter by title or company…" class="st-sans text-sm w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+              ${filteredJobs.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No postings match yet.</div>`
+                : filteredJobs.map((job) => {
+                    const isOpen = expandedJob === job.id;
+                    return html`<div key=${job.id} class="rounded" style=${{ border: "1px solid " + PALETTE.line, background: PALETTE.panel2 }}>
+                      <div class="px-3 py-2.5 flex items-center justify-between gap-3 cursor-pointer" onClick=${() => setExpandedJob(isOpen ? null : job.id)}>
+                        <div>
+                          <div class="st-sans text-sm font-medium" style=${{ color: PALETTE.text }}>${job.title}</div>
+                          <div class="st-mono text-xs" style=${{ color: PALETTE.muted }}>${job.company || "—"} · ${new Date(job.dateAdded).toLocaleDateString()} · ${job.skillIds.length} tags</div>
+                        </div>
+                        <button onClick=${(e) => { e.stopPropagation(); handleDeleteJob(job.id); }} class="st-mono text-xs px-2 py-1 rounded shrink-0" style=${{ color: PALETTE.danger, border: "1px solid " + PALETTE.line }}>delete</button>
+                      </div>
+                      ${isOpen && html`<div class="px-3 pb-3 space-y-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                        ${job.url && html`<a href=${job.url} target="_blank" rel="noreferrer" class="st-mono text-xs underline block pt-2" style=${{ color: "#4FD1C5" }}>${job.url}</a>`}
+                        <div class="flex flex-wrap gap-1.5 pt-1">
+                          ${job.skillIds.map((sid) => {
+                            const s = currentData.skills.find((sk) => sk.id === sid);
+                            if (!s) return null;
+                            const color = CATEGORY_COLORS[s.category] || PALETTE.muted;
+                            return html`<span key=${sid} class="st-mono text-xs px-2 py-0.5 rounded-full" style=${{ background: color + "22", color: color }}>${s.name}</span>`;
+                          })}
+                        </div>
+                        <div class="st-sans text-xs whitespace-pre-wrap max-h-64 overflow-y-auto pt-2" style=${{ color: PALETTE.muted }}>${job.text}</div>
+                      </div>`}
+                    </div>`;
+                  })}
+            </div>`}
+        </div>`}
+    </div>`;
+}
 
-        // Application State Controller Container
-        let currentUser = null;
-        let chartInstance = null;
-        let trackingSkillsData = {
-            "C++": 0, "Python": 0, "ROS": 0, "ROS2": 0, "Linux": 0, 
-            "Docker": 0, "Git": 0, "MoveIt": 0, "OpenCV": 0, "PCL": 0, 
-            "Gazebo": 0, "URDF": 0, "TF2": 0, "Navigation Stack": 0, 
-            "RTOS": 0, "FreeRTOS": 0, "CAN Bus": 0, "EtherCAT": 0, 
-            "Microcontrollers": 0, "CUDA": 0, "TensorFlow": 0, "PyTorch": 0, 
-            "SLAM": 0, "Kalman Filters": 0, "Kinematics": 0, "Control Theory": 0
-        };
-
-        // UI DOM Nodes Reference Collection Registry Layout Map Matrix Element Targets
-        const authBtn = document.getElementById('authBtn');
-        const signOutBtn = document.getElementById('signOutBtn');
-        const userProfile = document.getElementById('userProfile');
-        const userAvatar = document.getElementById('userAvatar');
-        const userName = document.getElementById('userName');
-        const toggleConfigBtn = document.getElementById('toggleConfigBtn');
-        const configPanel = document.getElementById('configPanel');
-        const groqApiKeyInput = document.getElementById('groqApiKey');
-        const saveConfigBtn = document.getElementById('saveConfigBtn');
-        const jobDescriptionInput = document.getElementById('jobDescriptionInput');
-        const manualMatchBtn = document.getElementById('manualMatchBtn');
-        const aiScanBtn = document.getElementById('aiScanBtn');
-        const aiScanBtnText = document.getElementById('aiScanBtnText');
-        const newSkillNameInput = document.getElementById('newSkillName');
-        const addSkillBtn = document.getElementById('addSkillBtn');
-        const totalSkillsCount = document.getElementById('totalSkillsCount');
-        const skillsTableBody = document.getElementById('skillsTableBody');
-        const resetCountsBtn = document.getElementById('resetCountsBtn');
-
-        // Initial Executions Initialization Triggers On Bootstrap Lifecycle Phase Pipeline Engine Routine
-        window.addEventListener('DOMContentLoaded', () => {
-            loadLocalConfigData();
-            initChartEngineView();
-            renderSkillsDashboardDataGrid();
-        });
-
-        // Toggle Config Panel UI Component Event Handlers View Engine Bindings
-        toggleConfigBtn.addEventListener('click', () => configPanel.classList.toggle('hidden'));
-        saveConfigBtn.addEventListener('click', () => {
-            localStorage.setItem('groq_api_key_v2', groqApiKeyInput.value.trim());
-            alert('Settings locked and committed safely to browser sandbox layer storage engine parameters database environment.');
-            configPanel.classList.add('hidden');
-        });
-
-        function loadLocalConfigData() {
-            const preservedKey = localStorage.getItem('groq_api_key_v2');
-            if (preservedKey) groqApiKeyInput.value = preservedKey;
-            
-            if (!currentUser) {
-                const locallySavedSkills = localStorage.getItem('local_skills_backup_registry');
-                if (locallySavedSkills) {
-                    try {
-                        trackingSkillsData = JSON.parse(locallySavedSkills);
-                    } catch(e) { console.error("Error parsing backup registry matrix metrics structure configurations.", e); }
-                }
-            }
-        }
-
-        // Firebase Auth Monitor Event Wireframes Sync Layer Realtime Data System Connector Hub Pipeline
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                currentUser = user;
-                authBtn.classList.add('hidden');
-                userProfile.classList.remove('hidden');
-                userAvatar.src = user.photoURL || '';
-                userName.textContent = user.displayName || 'Developer Auth';
-                await syncCloudDatabasePullData();
-            } else {
-                currentUser = null;
-                authBtn.classList.remove('hidden');
-                userProfile.classList.add('hidden');
-                loadLocalConfigData();
-                updateChartEngineAndDomView();
-            }
-        });
-
-        authBtn.addEventListener('click', () => {
-            signInWithPopup(auth, provider).catch(error => {
-                console.error("Authentication handshake structural anomaly reported: ", error);
-                if(error.code === 'auth/unauthorized-domain') {
-                    alert("Unauthorized Domain Block: Verify your exact active hosting target dashboard deployment domain configuration URL entry matches the Firebase authorization console setup checklist rules.");
-                } else {
-                    alert(`Authentication failure anomaly: ${error.message}`);
-                }
-            });
-        });
-
-        signOutBtn.addEventListener('click', () => {
-            signOut(auth).then(() => {
-                alert("Disconnected securely from the Firebase application cluster module parameters runtime engine environments.");
-            });
-        });
-
-        // Data Storage Engine Transactions Synchronization Layer Updates Methods Framework Subsystem
-        async function syncCloudDatabasePullData() {
-            if (!currentUser) return;
-            const dbRef = ref(db);
-            try {
-                const snapshot = await get(child(dbRef, `users/${currentUser.uid}/skills`));
-                if (snapshot.exists()) {
-                    trackingSkillsData = snapshot.val();
-                } else {
-                    await set(ref(db, `users/${currentUser.uid}/skills`), trackingSkillsData);
-                }
-                updateChartEngineAndDomView();
-            } catch (error) {
-                console.error("Cloud interface parsing operational database data extraction block exception:", error);
-            }
-        }
-
-        async function writeCommitSyncSaveSkills() {
-            if (currentUser) {
-                try {
-                    await set(ref(db, `users/${currentUser.uid}/skills`), trackingSkillsData);
-                } catch (error) {
-                    console.error("Failed writing dataset metrics updates back over structural remote databases schema pipelines.", error);
-                }
-            } else {
-                localStorage.setItem('local_skills_backup_registry', JSON.stringify(trackingSkillsData));
-            }
-            updateChartEngineAndDomView();
-        }
-
-        // Mutation Operations Functions Mechanics Control Block Actions Triggers Modifiers
-        addSkillBtn.addEventListener('click', () => {
-            const targetSkillRawStringValue = newSkillNameInput.value.trim();
-            if (!targetSkillRawStringValue) return;
-            if (trackingSkillsData[targetSkillRawStringValue] !== undefined) {
-                alert("Key entry identifier is already tracked in active tracking monitoring array dashboards framework metrics layout system.");
-                return;
-            }
-            trackingSkillsData[targetSkillRawStringValue] = 0;
-            newSkillNameInput.value = '';
-            writeCommitSyncSaveSkills();
-        });
-
-        resetCountsBtn.addEventListener('click', () => {
-            if (!confirm("Are you absolutely certain you desire resetting all logged baseline tracking metric occurrence data points counts back down down to pure zero values?")) return;
-            for (let skillKey in trackingSkillsData) {
-                trackingSkillsData[skillKey] = 0;
-            }
-            writeCommitSyncSaveSkills();
-        });
-
-        // Basic Local Regex Content Match Parsing Extraction Subroutine Execution Logic Processing Layout Engine
-        manualMatchBtn.addEventListener('click', () => {
-            const sourceTextContentBlobString = jobDescriptionInput.value;
-            if (!sourceTextContentBlobString.trim()) {
-                alert("Input data field text structure appears empty. Fill out text arrays to parse.");
-                return;
-            }
-
-            let modificationTicksLoggedRegistryCount = 0;
-            for (let targetSkillKeyWord in trackingSkillsData) {
-                const safeEscapedRegexPatternString = targetSkillKeyWord.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-                const wordBoundaryMatchRegexPattern = new RegExp(`\\b${safeEscapedRegexPatternString}\\b`, 'gi');
-                const checkFoundMatchesOccurrences = sourceTextContentBlobString.match(wordBoundaryMatchRegexPattern);
-                
-                if (checkFoundMatchesOccurrences && checkFoundMatchesOccurrences.length > 0) {
-                    trackingSkillsData[targetSkillKeyWord] += 1;
-                    modificationTicksLoggedRegistryCount++;
-                }
-            }
-
-            if (modificationTicksLoggedRegistryCount > 0) {
-                alert(`Successfully matched and updated tracking hits for [ ${modificationTicksLoggedRegistryCount} ] monitored competency components rows on metrics dashboards systems arrays layout charts.`);
-                writeCommitSyncSaveSkills();
-            } else {
-                alert("No structural regex matches matching elements from within configured monitoring array parameters keyword profiles detected inside pasted document dataset layout arrays blocks.");
-            }
-        });
-
-        // AI LLM Cloud Processing Integration Core Function Implementation Pipeline Framework Block Matrix
-        aiScanBtn.addEventListener('click', async () => {
-            const activeInputBlobPayloadText = jobDescriptionInput.value.trim();
-            const checkedStorageApiKeyTokenSecret = localStorage.getItem('groq_api_key_v2');
-
-            if (!checkedStorageApiKeyTokenSecret) {
-                alert("Missing Security API Credentials Secret Token: Expand API settings panel configuration block module options and insert functional access validation keys strings.");
-                configPanel.classList.remove('hidden');
-                return;
-            }
-            if (!activeInputBlobPayloadText) {
-                alert("Input target textual data stream strings components body segment arrays are empty. Paste targeted text elements documentation content to process structural mapping analyses scans.");
-                return;
-            }
-
-            setAiScanningButtonUiStateIndicator(true);
-
-            // Construct explicit formatting array boundaries context layout mapping configurations settings to lock down runtime variables profiles execution parameters
-            const configuredTrackingSkillsKeysArray = Object.keys(trackingSkillsData);
-            const constructionAiSystemPromptMatrixContext = `
-            You are an elite, exact technical analysis system specializing in parsing robotics engineering job specifications.
-            Analyze the user's provided job description text. Your task is twofold:
-            1. Identify which existing tracked skills are requested in the text.
-            2. Extract any completely new, specialized technical skills, tools, or libraries specific to robotics/software engineering that are missing from the current tracked list.
-
-            CURRENTLY TRACKED SKILLS:
-            ${JSON.stringify(configuredTrackingSkillsKeysArray)}
-
-            CRITICAL COMPLIANCE RULES:
-            - Focus only on technical tools, languages, frameworks, libraries, protocols, or engineering concepts (e.g., EtherCAT, LCM, OpenCV, Gazebo, MoveIt).
-            - Do NOT extract soft skills, company names, general non-technical words, or broad industry terms.
-            - Provide your response in STRIKT, VALID JSON format. Do not include markdown code block syntax (like \`\`\`json). Return raw JSON only.
-
-            EXPECTED JSON RESPONSE STRUCTURE:
-            {
-                "existing_skills_found": ["SkillA", "SkillB"],
-                "new_skills_extracted": ["NewSkillX", "NewSkillY"]
-            }
-            `;
-
-            try {
-                // Utilizing openai/gpt-oss-120b for robust structural inference compliance and long-term durability on Groq
-                const remoteServerResponseResult = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${checkedStorageApiKeyTokenSecret}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: "openai/gpt-oss-120b",
-                        response_format: { type: "json_object" },
-                        messages: [
-                            { role: "system", content: constructionAiSystemPromptMatrixContext },
-                            { role: "user", content: activeInputBlobPayloadText }
-                        ],
-                        temperature: 0.1
-                    })
-                });
-
-                if (!remoteServerResponseResult.ok) {
-                    const errorDetails = await remoteServerResponseResult.text();
-                    throw new Error(`API Endpoint infrastructure validation system exception error code: ${remoteServerResponseResult.status} - ${errorDetails}`);
-                }
-
-                const executedJsonPayloadResultData = await remoteServerResponseResult.json();
-                const parsedContentRawResponseTextString = executedJsonPayloadResultData.choices[0].message.content;
-                
-                const clearedResponseDataStructureDataResult = JSON.parse(parsedContentRawResponseTextString);
-                executeInjectApplyAiInferenceParsingScanResultsToState(clearedResponseDataStructureDataResult);
-
-            } catch (runtimeFaultExceptionBlockError) {
-                console.error("AI cloud runtime background parsing processing task routine execution fatal tracking loop failure anomaly exception:", runtimeFaultExceptionBlockError);
-                alert(`AI deep analysis parser thread task operation processing execution pipeline exception error fault instance message: ${runtimeFaultExceptionBlockError.message}`);
-            } finally {
-                setAiScanningButtonUiStateIndicator(false);
-            }
-        });
-
-        function setAiScanningButtonUiStateIndicator(isCurrentlyProcessingJobScanningThread) {
-            if (isCurrentlyProcessingJobScanningThread) {
-                aiScanBtn.disabled = true;
-                aiScanBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                aiScanBtnText.textContent = "🤖 scanning for untracked skills…";
-            } else {
-                aiScanBtn.disabled = false;
-                aiScanBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-                aiScanBtnText.textContent = "🤖 Deep Scan via Groq AI Engine";
-            }
-        }
-
-        function executeInjectApplyAiInferenceParsingScanResultsToState(parsedCleanedAiStructuredJsonPayloadMap) {
-            let stateMutatedModificationOccurredIndicator = false;
-            let logNotificationOutputReportSummaryMessage = "";
-
-            // Phase 1 processing logic tracking loops operations for updates to preconfigured key parameters indicators inside existing tracking structures schemas counters
-            if (parsedCleanedAiStructuredJsonPayloadMap.existing_skills_found && Array.isArray(parsedCleanedAiStructuredJsonPayloadMap.existing_skills_found)) {
-                parsedCleanedAiStructuredJsonPayloadMap.existing_skills_found.forEach(matchedTrackedSkillKeyStringValue => {
-                    if (trackingSkillsData[matchedTrackedSkillKeyStringValue] !== undefined) {
-                        trackingSkillsData[matchedTrackedSkillKeyStringValue] += 1;
-                        stateMutatedModificationOccurredIndicator = true;
-                    }
-                });
-                if(parsedCleanedAiStructuredJsonPayloadMap.existing_skills_found.length > 0) {
-                    logNotificationOutputReportSummaryMessage += `Incremented tracking frequencies for: ${parsedCleanedAiStructuredJsonPayloadMap.existing_skills_found.join(', ')}\n\n`;
-                }
-            }
-
-            // Phase 2 evaluation checks sequences executing routines processing loops inserting completely untracked novelty metadata vectors parameters
-            if (parsedCleanedAiStructuredJsonPayloadMap.new_skills_extracted && Array.isArray(parsedCleanedAiStructuredJsonPayloadMap.new_skills_extracted)) {
-                let newlyDiscoveredSkillsAddedCount = 0;
-                parsedCleanedAiStructuredJsonPayloadMap.new_skills_extracted.forEach(newlyFoundSkillNameStringValue => {
-                    const cleanedSkillName = newlyFoundSkillNameStringValue.trim();
-                    if (cleanedSkillName && trackingSkillsData[cleanedSkillName] === undefined) {
-                        trackingSkillsData[cleanedSkillName] = 1; // Bootstrap counter instantly at first frequency match 
-                        stateMutatedModificationOccurredIndicator = true;
-                        newlyDiscoveredSkillsAddedCount++;
-                    }
-                });
-                if (newlyDiscoveredSkillsAddedCount > 0) {
-                    logNotificationOutputReportSummaryMessage += `Discovered and automatically cataloged ${newlyDiscoveredSkillsAddedCount} brand-new specialized tools: ${parsedCleanedAiStructuredJsonPayloadMap.new_skills_extracted.join(', ')}`;
-                }
-            }
-
-            if (stateMutatedModificationOccurredIndicator) {
-                alert(logNotificationOutputReportSummaryMessage || "Data matrix adjustments integrated successfully.");
-                writeCommitSyncSaveSkills();
-            } else {
-                alert("The AI scanner analyzed the text but found no additional unique skills outside of what your dashboard is already tracking.");
-            }
-        }
-
-        // Data Charts Visualization Graphics Presentation Layout Setup Logic Engine Configuration Blocks Section Modules
-        function initChartEngineView() {
-            const chartCanvasContextTarget = document.getElementById('skillsChart').getContext('2d');
-            
-            chartInstance = new Chart(chartCanvasContextTarget, {
-                type: 'bar',
-                data: {
-                    labels: [],
-                    datasets: [{
-                        label: 'Job Postings Demand Frequency (Hits Matrix)',
-                        data: [],
-                        backgroundColor: 'rgba(59, 130, 246, 0.75)',
-                        borderColor: 'rgba(29, 78, 216, 1)',
-                        borderWidth: 1.5,
-                        borderRadius: 6,
-                        barThickness: 'flex'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { stepSize: 1, color: '#9ca3af', font: { family: 'Inter, sans-serif' } },
-                            grid: { color: '#f3f4f6' }
-                        },
-                        x: {
-                            ticks: { color: '#4b5563', font: { size: 11, family: 'Inter, sans-serif', weight: '500' }, maxRotation: 45, minRotation: 45 },
-                            grid: { display: false }
-                        }
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { backgroundColor: '#1f2937', padding: 12, titleFont: { size: 13 }, bodyFont: { size: 12 } }
-                    }
-                }
-            });
-        }
-
-        function updateChartEngineAndDomView() {
-            const sortedOutputDatasetEntriesMatrixArrays = Object.entries(trackingSkillsData)
-                .sort((alphaElement, betaElement) => betaElement[1] - alphaElement[1]);
-
-            const dynamicLabelsArray = [];
-            const dynamicCountsDataValuesArray = [];
-
-            sortedOutputDatasetEntriesMatrixArrays.forEach(([labelNameKey, computedHitCountValue]) => {
-                dynamicLabelsArray.push(labelNameKey);
-                dynamicCountsDataValuesArray.push(computedHitCountValue);
-            });
-
-            if (chartInstance) {
-                chartInstance.data.labels = dynamicLabelsArray;
-                chartInstance.data.datasets[0].data = dynamicCountsDataValuesArray;
-                chartInstance.update();
-            }
-
-            renderSkillsDashboardDataGrid(sortedOutputDatasetEntriesMatrixArrays);
-        }
-
-        function renderSkillsDashboardDataGrid(preSortedDatasetEntriesArray = null) {
-            const processingActiveTargetDataEntriesArrays = preSortedDatasetEntriesArray || Object.entries(trackingSkillsData).sort((a, b) => b[1] - a[1]);
-            
-            totalSkillsCount.textContent = `${processingActiveTargetDataEntriesArrays.length} Total Competencies Tracked`;
-            skillsTableBody.innerHTML = '';
-
-            processingActiveTargetDataEntriesArrays.forEach(([skillNameKeyString, calculatedHitsCounterInt]) => {
-                const generatedRowMarkupElementNode = document.createElement('tr');
-                generatedRowMarkupElementNode.className = "hover:bg-gray-50 transition duration-150";
-                generatedRowMarkupElementNode.innerHTML = `
-                    <td class="px-6 py-3.5 font-semibold text-gray-900">${skillNameKeyString}</td>
-                    <td class="px-6 py-3.5 text-center">
-                        <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${calculatedHitsCounterInt > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-400'}">
-                            ${calculatedHitsCounterInt} Hits Match
-                        </span>
-                    </td>
-                    <td class="px-6 py-3.5 text-right space-x-2">
-                        <button class="increment-btn bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-300 text-blue-600 px-2 py-1 rounded md:text-xs font-semibold transition" data-id="${skillNameKeyString}">+1 Hit</button>
-                        <button class="delete-btn text-gray-300 hover:text-red-500 p-1 rounded transition" data-id="${skillNameKeyString}">
-                            <svg class="w-4 h-4 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-16v1a3 3 0 003 3h10M4 7h16"/></svg>
-                        </button>
-                    </td>
-                `;
-
-                // Wire click actions directly down to sub-component child handlers instances
-                generatedRowMarkupElementNode.querySelector('.increment-btn').addEventListener('click', (e) => {
-                    const targetId = e.target.getAttribute('data-id');
-                    trackingSkillsData[targetId] += 1;
-                    writeCommitSyncSaveSkills();
-                });
-
-                generatedRowMarkupElementNode.querySelector('.delete-btn').addEventListener('click', (e) => {
-                    const targetId = e.currentTarget.getAttribute('data-id');
-                    if (confirm(`Remove "${targetId}" entirely from dashboard tracking vectors maps registry?`)) {
-                        delete trackingSkillsData[targetId];
-                        writeCommitSyncSaveSkills();
-                    }
-                });
-
-                skillsTableBody.appendChild(generatedRowMarkupElementNode);
-            });
-        }
-    </script>
+const root = createRoot(document.getElementById("root"));
+root.render(html`<${App} />`);
+</script>
 </body>
 </html>
