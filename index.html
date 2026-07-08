@@ -35,7 +35,7 @@ import { createRoot } from "react-dom/client";
 import htm from "htm";
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot } from "firebase/firestore";
 
 const html = htm.bind(React.createElement);
 
@@ -269,16 +269,34 @@ function App() {
   async function removeFromMyList(id) { await persistMyList(myDashboards.filter((d) => d.id !== id)); }
   async function deletePermanently(id) { try { await deleteDashboard(id); } catch (e) {} await removeFromMyList(id); }
 
-  async function openDashboard(entry) {
+  /* ============ REAL-TIME SYNC LISTENER ============ */
+  // Fires instantly whenever you or your colleagues modify data on this share-code
+  useEffect(() => {
+    if (!currentId || screen !== "dashboard") return;
+    
+    setDashLoading(true);
+    const unsubDashboard = onSnapshot(doc(db, "dashboards", currentId), (docSnap) => {
+      if (docSnap.exists()) {
+        setCurrentData(docSnap.data());
+        setCounts((p) => ({ ...p, [currentId]: docSnap.data().jobs.length }));
+        setDashError("");
+      } else {
+        setDashError("This dashboard couldn't be found — it may have been deleted.");
+        setCurrentData(null);
+      }
+      setDashLoading(false);
+    }, (error) => {
+      setDashError("Sync error: " + error.message);
+      setDashLoading(false);
+    });
+
+    return () => unsubDashboard();
+  }, [currentId, screen]);
+
+  function openDashboard(entry) {
     setCurrentId(entry.id); setCurrentIsOwner(entry.isOwner);
-    setScreen("dashboard"); setTab("dashboard"); setDashLoading(true); setDashError("");
+    setScreen("dashboard"); setTab("dashboard"); setDashError("");
     resetForm();
-    try {
-      const data = await getDashboard(entry.id);
-      if (data) setCurrentData(data);
-      else { setDashError("This dashboard couldn't be found — it may have been deleted."); setCurrentData(null); }
-    } catch (e) { setDashError("Couldn't load this dashboard: " + e.message); setCurrentData(null); }
-    finally { setDashLoading(false); }
   }
 
   function backHome() { setScreen("home"); setCurrentId(null); setCurrentData(null); loadHome(); }
@@ -290,7 +308,7 @@ function App() {
   }
 
   async function persistCurrent(next) {
-    setCurrentData(next);
+    // We update Firestore; the onSnapshot listener above will handle setting state automatically
     try { await setDashboard(currentId, next); setDashError(""); }
     catch (e) { setDashError("Save failed: " + e.message); }
   }
@@ -392,11 +410,24 @@ function App() {
     if (!title.trim() || !text.trim() || checkedIds.size === 0 || !currentData) return;
     setSaving(true);
     const jobId = genId("job");
-    const job = { id: jobId, title: title.trim(), company: company.trim(), url: url.trim(), dateAdded: new Date().toISOString(), text: text.trim(), skillIds: Array.from(checkedIds) };
+    
+    // Attributed logging: Stamps the current user's display name onto the job submission entry
+    const contributorName = userProfile ? userProfile.name : "Anonymous Colleague";
+    
+    const job = { 
+      id: jobId, 
+      title: title.trim(), 
+      company: company.trim(), 
+      url: url.trim(), 
+      dateAdded: new Date().toISOString(), 
+      text: text.trim(), 
+      skillIds: Array.from(checkedIds),
+      addedBy: contributorName
+    };
+    
     const nextSkills = currentData.skills.map((s) => checkedIds.has(s.id) ? { ...s, count: s.count + 1, jobIds: [...s.jobIds, jobId] } : s);
     const next = { ...currentData, skills: nextSkills, jobs: [...currentData.jobs, job] };
     await persistCurrent(next);
-    setCounts((p) => ({ ...p, [currentId]: next.jobs.length }));
     setSaving(false); resetForm(); setTab("dashboard");
   }
 
@@ -407,7 +438,6 @@ function App() {
     const nextJobs = currentData.jobs.filter((j) => j.id !== jobId);
     const next = { ...currentData, skills: nextSkills, jobs: nextJobs };
     await persistCurrent(next);
-    setCounts((p) => ({ ...p, [currentId]: nextJobs.length }));
     if (expandedJob === jobId) setExpandedJob(null);
   }
 
@@ -429,7 +459,7 @@ function App() {
     const jobs = [...currentData.jobs].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
     if (!logFilter.trim()) return jobs;
     const q = logFilter.toLowerCase();
-    return jobs.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q));
+    return jobs.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q) || (j.addedBy && j.addedBy.toLowerCase().includes(q)));
   }, [currentData, logFilter]);
 
   if (authLoading) return html`<div class="st-mono text-sm p-6 min-h-screen flex items-center justify-center" style=${{ background: PALETTE.bg, color: PALETTE.muted }}>connecting…</div>`;
@@ -553,7 +583,7 @@ function App() {
         </div>
       </div>
       ${dashError && html`<div class="px-5 py-2 st-mono text-xs" style=${{ background: "#2A1A1E", color: PALETTE.danger }}>${dashError}</div>`}
-      ${dashLoading ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-mono text-sm">loading dashboard…</div>`
+      ${dashLoading && !currentData ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-mono text-sm">loading dashboard…</div>`
       : !currentData ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-sans text-sm">${dashError || "This dashboard is unavailable."}</div>`
       : html`
         <div class="px-5 pt-4 flex gap-1">
@@ -649,7 +679,7 @@ function App() {
             </div>`}
           ${tab === "log" && html`
             <div class="max-w-3xl mx-auto space-y-3">
-              <input value=${logFilter} onChange=${(e) => setLogFilter(e.target.value)} placeholder="Filter by title or company…" class="st-sans text-sm w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+              <input value=${logFilter} onChange=${(e) => setLogFilter(e.target.value)} placeholder="Filter by title, company, or contributor…" class="st-sans text-sm w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
               ${filteredJobs.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No postings match yet.</div>`
                 : filteredJobs.map((job) => {
                     const isOpen = expandedJob === job.id;
@@ -657,7 +687,10 @@ function App() {
                       <div class="px-3 py-2.5 flex items-center justify-between gap-3 cursor-pointer" onClick=${() => setExpandedJob(isOpen ? null : job.id)}>
                         <div>
                           <div class="st-sans text-sm font-medium" style=${{ color: PALETTE.text }}>${job.title}</div>
-                          <div class="st-mono text-xs" style=${{ color: PALETTE.muted }}>${job.company || "—"} · ${new Date(job.dateAdded).toLocaleDateString()} · ${job.skillIds.length} tags</div>
+                          <div class="st-mono text-xs" style=${{ color: PALETTE.muted }}>
+                            ${job.company || "—"} · ${new Date(job.dateAdded).toLocaleDateString()} · ${job.skillIds.length} tags
+                            ${job.addedBy && html` · <span style=${{ color: "#4FD1C5" }}>👤 ${job.addedBy}</span>`}
+                          </div>
                         </div>
                         <button onClick=${(e) => { e.stopPropagation(); handleDeleteJob(job.id); }} class="st-mono text-xs px-2 py-1 rounded shrink-0" style=${{ color: PALETTE.danger, border: "1px solid " + PALETTE.line }}>delete</button>
                       </div>
