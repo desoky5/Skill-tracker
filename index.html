@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Robotics Skill Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+  body { margin: 0; background:#0F1419; }
+  .st-mono { font-family: 'IBM Plex Mono', monospace; }
+  .st-sans { font-family: 'Inter', sans-serif; }
+  .st-tick { background-image: repeating-linear-gradient(90deg, #232B38 0, #232B38 1px, transparent 1px, transparent 8px); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18",
+    "react-dom/client": "https://esm.sh/react-dom@18/client",
+    "htm": "https://esm.sh/htm@3",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"
+  }
+}
+</script>
+
+<script type="module">
+import React, { useState, useEffect, useMemo } from "react";
+import { createRoot } from "react-dom/client";
+import htm from "htm";
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+
+const html = htm.bind(React.createElement);
+
+/* ============ 1. FILL IN YOUR OWN FIREBASE CONFIG BELOW ============
+   Get this from: Firebase console -> Project settings -> Your apps -> Web app
+   This object is NOT secret -- it's fine that it's visible in this file.
+   Security is enforced by your Firestore rules, not by hiding this. */
+const firebaseConfig = {
+  apiKey: "AIzaSyA7f95OKms0oMdUzsnE4e_2NBdlLQJjbWs",
+  authDomain: "skill-frequency-tracker.firebaseapp.com",
+  projectId: "skill-frequency-tracker",
+  storageBucket: "skill-frequency-tracker.firebasestorage.app",
+  messagingSenderId: "654121219345",
+  appId: "1:654121219345:web:58c70d14e71679964388b0",
+};
+/* ===================================================================== */
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
+
+/* ---------- design tokens ---------- */
+const PALETTE = {
+  bg: "#0F1419", panel: "#161D27", panel2: "#1B2431", line: "#232B38",
+  text: "#E4E9F0", muted: "#8A96A6", faint: "#4B5666", danger: "#FB7185",
+};
+const CATEGORY_COLORS = {
+  "Programming Languages": "#F5A623",
+  "Tools & Frameworks": "#4FD1C5",
+  "Simulation Programs": "#A78BFA",
+  "Concepts & Methods": "#FB7185",
+  "Preferences & Notices": "#94A3B8",
+};
+const DEFAULT_CATEGORIES = Object.keys(CATEGORY_COLORS);
+const CARD_ACCENTS = ["#F5A623", "#4FD1C5", "#A78BFA", "#FB7185", "#60A5FA", "#4ADE80"];
+
+const SEED_SKILLS = [
+  { name: "C++", category: "Programming Languages" }, { name: "Python", category: "Programming Languages" },
+  { name: "C", category: "Programming Languages" }, { name: "MATLAB", category: "Programming Languages" },
+  { name: "Assembly", category: "Programming Languages" }, { name: "Bash", category: "Programming Languages" },
+  { name: "ROS", category: "Tools & Frameworks" }, { name: "ROS2", category: "Tools & Frameworks" },
+  { name: "Git", category: "Tools & Frameworks" }, { name: "Docker", category: "Tools & Frameworks" },
+  { name: "Linux", category: "Tools & Frameworks" }, { name: "OpenCV", category: "Tools & Frameworks" },
+  { name: "STM32", category: "Tools & Frameworks" }, { name: "Arduino", category: "Tools & Frameworks" },
+  { name: "CAN Bus", category: "Tools & Frameworks" }, { name: "I2C", category: "Tools & Frameworks" },
+  { name: "SPI", category: "Tools & Frameworks" }, { name: "UART", category: "Tools & Frameworks" },
+  { name: "RTOS", category: "Tools & Frameworks" }, { name: "Nav2", category: "Tools & Frameworks" },
+  { name: "SolidWorks", category: "Tools & Frameworks" }, { name: "PCB Design", category: "Tools & Frameworks" },
+  { name: "Gazebo", category: "Simulation Programs" }, { name: "RViz", category: "Simulation Programs" },
+  { name: "Webots", category: "Simulation Programs" }, { name: "Simulink", category: "Simulation Programs" },
+  { name: "CoppeliaSim", category: "Simulation Programs" }, { name: "Isaac Sim", category: "Simulation Programs" },
+  { name: "Unity", category: "Simulation Programs" },
+  { name: "SLAM", category: "Concepts & Methods" }, { name: "Kalman Filter", category: "Concepts & Methods" },
+  { name: "PID Control", category: "Concepts & Methods" }, { name: "Kinematics", category: "Concepts & Methods" },
+  { name: "Computer Vision", category: "Concepts & Methods" }, { name: "Machine Learning", category: "Concepts & Methods" },
+  { name: "Sensor Fusion", category: "Concepts & Methods" }, { name: "Path Planning", category: "Concepts & Methods" },
+  { name: "Internship in related field preferred", category: "Preferences & Notices" },
+  { name: "Industry experience preferred", category: "Preferences & Notices" },
+  { name: "Willing to relocate", category: "Preferences & Notices" },
+  { name: "Master's degree preferred", category: "Preferences & Notices" },
+  { name: "Security clearance eligible", category: "Preferences & Notices" },
+  { name: "Portfolio/GitHub required", category: "Preferences & Notices" },
+];
+
+function genId(prefix) { return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8); }
+const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+function genShareCode() { let out = ""; for (let i = 0; i < 6; i++) out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]; return out; }
+function accentForId(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return CARD_ACCENTS[h % CARD_ACCENTS.length]; }
+function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+function buildSeedDashboard(name) {
+  const skills = SEED_SKILLS.map((s) => ({ id: genId("skill"), name: s.name, category: s.category, aliases: [], count: 0, jobIds: [] }));
+  return { name, categories: [...DEFAULT_CATEGORIES], skills, jobs: [], createdAt: new Date().toISOString() };
+}
+
+function findMatchedSkillIds(skills, text) {
+  const matched = new Set();
+  skills.forEach((s) => {
+    try {
+      const p = new RegExp("(?<![a-zA-Z0-9])" + escapeRegex(s.name) + "(?![a-zA-Z0-9])", "i");
+      if (p.test(text)) matched.add(s.id);
+    } catch (e) { if (text.toLowerCase().includes(s.name.toLowerCase())) matched.add(s.id); }
+  });
+  return matched;
+}
+
+/* ---------- Firestore-backed storage helpers (replaces window.storage) ---------- */
+async function getUserDashboards(uid) {
+  const snap = await getDoc(doc(db, "users", uid));
+  return snap.exists() ? (snap.data().dashboards || []) : [];
+}
+async function setUserDashboards(uid, list) {
+  await setDoc(doc(db, "users", uid), { dashboards: list });
+}
+async function getDashboard(code) {
+  const snap = await getDoc(doc(db, "dashboards", code));
+  return snap.exists() ? snap.data() : null;
+}
+async function setDashboard(code, data) {
+  await setDoc(doc(db, "dashboards", code), data);
+}
+async function deleteDashboard(code) {
+  await deleteDoc(doc(db, "dashboards", code));
+}
+
+function IconButton(props) {
+  const { children, className, ...rest } = props;
+  return html`<button ...${rest} class="st-mono text-xs px-3 py-1.5 rounded transition-opacity hover:opacity-80 ${className || ""}">${children}</button>`;
+}
+
+function App() {
+  const [uid, setUid] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+  const [screen, setScreen] = useState("home");
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [homeError, setHomeError] = useState("");
+  const [myDashboards, setMyDashboards] = useState([]);
+  const [counts, setCounts] = useState({});
+  const [showCreate, setShowCreate] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [newDashName, setNewDashName] = useState("");
+  const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [apiKey, setApiKey] = useState(localStorage.getItem("anthropic_api_key") || "");
+
+  const [currentId, setCurrentId] = useState(null);
+  const [currentIsOwner, setCurrentIsOwner] = useState(false);
+  const [currentData, setCurrentData] = useState(null);
+  const [dashLoading, setDashLoading] = useState(false);
+  const [dashError, setDashError] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [tab, setTab] = useState("dashboard");
+
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [url, setUrl] = useState("");
+  const [text, setText] = useState("");
+  const [analyzed, setAnalyzed] = useState(false);
+  const [checkedIds, setCheckedIds] = useState(new Set());
+  const [newSkillName, setNewSkillName] = useState("");
+  const [newSkillCategory, setNewSkillCategory] = useState(DEFAULT_CATEGORIES[0]);
+  const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiNewIds, setAiNewIds] = useState(new Set());
+
+  const [expandedSkill, setExpandedSkill] = useState(null);
+  const [expandedJob, setExpandedJob] = useState(null);
+  const [logFilter, setLogFilter] = useState("");
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (u) { setUid(u.uid); setUserProfile({ name: u.displayName, photo: u.photoURL, email: u.email }); }
+      else { setUid(null); setUserProfile(null); }
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  async function handleGoogleSignIn() {
+    setSigningIn(true); setAuthError("");
+    try { await signInWithPopup(auth, googleProvider); }
+    catch (e) { setAuthError("Sign-in failed: " + e.message); }
+    finally { setSigningIn(false); }
+  }
+
+  async function handleSignOut() {
+    try { await signOut(auth); setScreen("home"); setCurrentId(null); setCurrentData(null); }
+    catch (e) { setAuthError("Sign-out failed: " + e.message); }
+  }
+
+  useEffect(() => { if (uid) loadHome(); }, [uid]);
+
+  async function loadHome() {
+    setHomeLoading(true); setHomeError("");
+    try {
+      const list = await getUserDashboards(uid);
+      setMyDashboards(list);
+      const pairs = await Promise.all(list.map(async (d) => {
+        try { const data = await getDashboard(d.id); return [d.id, data ? data.jobs.length : null]; }
+        catch (e) { return [d.id, null]; }
+      }));
+      const cm = {}; pairs.forEach(([id, c]) => (cm[id] = c)); setCounts(cm);
+    } catch (e) { setHomeError("Couldn't load your dashboards: " + e.message); }
+    finally { setHomeLoading(false); }
+  }
+
+  async function persistMyList(list) {
+    setMyDashboards(list);
+    try { await setUserDashboards(uid, list); }
+    catch (e) { setHomeError("Couldn't save your dashboard list: " + e.message); }
+  }
+
+  async function createDashboard() {
+    const name = newDashName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      let code = genShareCode();
+      for (let i = 0; i < 3; i++) { const existing = await getDashboard(code); if (!existing) break; code = genShareCode(); }
+      await setDashboard(code, buildSeedDashboard(name));
+      const nextList = [...myDashboards, { id: code, name, isOwner: true }];
+      await persistMyList(nextList);
+      setCounts((p) => ({ ...p, [code]: 0 }));
+      setNewDashName(""); setShowCreate(false);
+      openDashboard({ id: code, name, isOwner: true });
+    } catch (e) { setHomeError("Couldn't create dashboard: " + e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function joinDashboard() {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    setBusy(true); setJoinError("");
+    try {
+      const data = await getDashboard(code);
+      if (!data) { setJoinError("No dashboard found with that code."); return; }
+      const already = myDashboards.find((d) => d.id === code);
+      if (already) { openDashboard(already); setShowJoin(false); return; }
+      const nextList = [...myDashboards, { id: code, name: data.name, isOwner: false }];
+      await persistMyList(nextList);
+      setCounts((p) => ({ ...p, [code]: data.jobs.length }));
+      setJoinCode(""); setShowJoin(false);
+      openDashboard({ id: code, name: data.name, isOwner: false });
+    } catch (e) { setJoinError("Couldn't reach that dashboard: " + e.message); }
+    finally { setBusy(false); }
+  }
+
+  async function removeFromMyList(id) { await persistMyList(myDashboards.filter((d) => d.id !== id)); }
+  async function deletePermanently(id) { try { await deleteDashboard(id); } catch (e) {} await removeFromMyList(id); }
+
+  async function openDashboard(entry) {
+    setCurrentId(entry.id); setCurrentIsOwner(entry.isOwner);
+    setScreen("dashboard"); setTab("dashboard"); setDashLoading(true); setDashError("");
+    resetForm();
+    try {
+      const data = await getDashboard(entry.id);
+      if (data) setCurrentData(data);
+      else { setDashError("This dashboard couldn't be found — it may have been deleted."); setCurrentData(null); }
+    } catch (e) { setDashError("Couldn't load this dashboard: " + e.message); setCurrentData(null); }
+    finally { setDashLoading(false); }
+  }
+
+  function backHome() { setScreen("home"); setCurrentId(null); setCurrentData(null); loadHome(); }
+
+  function resetForm() {
+    setTitle(""); setCompany(""); setUrl(""); setText(""); setAnalyzed(false);
+    setCheckedIds(new Set()); setNewSkillName(""); setExpandedSkill(null); setExpandedJob(null);
+    setLogFilter(""); setAiLoading(false); setAiError(""); setAiNewIds(new Set());
+  }
+
+  async function persistCurrent(next) {
+    setCurrentData(next);
+    try { await setDashboard(currentId, next); setDashError(""); }
+    catch (e) { setDashError("Save failed: " + e.message); }
+  }
+
+  function handleAnalyze() {
+    if (!text.trim() || !currentData) return;
+    setCheckedIds(findMatchedSkillIds(currentData.skills, text));
+    setAnalyzed(true);
+    if (apiKey.trim()) runAiScan(text); else setAiError("Add your Anthropic API key in Settings to enable AI-detected skills (optional).");
+  }
+
+  async function runAiScan(jobText) {
+    setAiLoading(true); setAiError("");
+    try {
+      const trackedNames = currentData.skills.map((s) => s.name).join(", ");
+      const categoryList = currentData.categories.join(", ");
+      const prompt = [
+        "You are analyzing a robotics engineering job description to find technical skills, tools, frameworks, or notable non-skill preferences that are NOT already tracked.",
+        "",
+        "Already-tracked items (do not repeat these or close variants): " + trackedNames,
+        "",
+        "Categories to choose from (pick best fit, or invent a short new one): " + categoryList,
+        "",
+        "Job description:",
+        '"""',
+        jobText,
+        '"""',
+        "",
+        'Return ONLY a JSON array (no markdown) like: [{"name": "...", "category": "..."}]. Only genuinely new items. If none, return [].'
+      ].join("\n");
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": apiKey.trim(), "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+      });
+      const data = await resp.json();
+      if (data.error) throw new Error(data.error.message || "API error");
+      const textBlocks = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n");
+      const cleaned = textBlocks.replace(/```json|```/g, "").trim();
+      let suggestions = [];
+      try { suggestions = JSON.parse(cleaned); } catch (e) { suggestions = []; }
+      if (!Array.isArray(suggestions) || suggestions.length === 0) { setAiLoading(false); return; }
+      const existingLower = new Set(currentData.skills.map((s) => s.name.toLowerCase()));
+      const toAdd = []; const seen = new Set();
+      suggestions.forEach((s) => {
+        if (!s || !s.name) return;
+        const name = String(s.name).trim(); const key = name.toLowerCase();
+        if (!name || existingLower.has(key) || seen.has(key)) return;
+        seen.add(key);
+        toAdd.push({ id: genId("skill"), name, category: (s.category && String(s.category).trim()) || "Concepts & Methods", aliases: [], count: 0, jobIds: [] });
+      });
+      if (toAdd.length === 0) { setAiLoading(false); return; }
+      const newCategories = [...currentData.categories];
+      toAdd.forEach((s) => { if (!newCategories.includes(s.category)) newCategories.push(s.category); });
+      const next = { ...currentData, categories: newCategories, skills: [...currentData.skills, ...toAdd] };
+      await persistCurrent(next);
+      setCheckedIds((prev) => { const n = new Set(prev); toAdd.forEach((s) => n.add(s.id)); return n; });
+      setAiNewIds((prev) => { const n = new Set(prev); toAdd.forEach((s) => n.add(s.id)); return n; });
+    } catch (e) { setAiError("AI scan failed: " + e.message); }
+    finally { setAiLoading(false); }
+  }
+
+  function toggleSkill(id) { setCheckedIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
+
+  function handleAddNewSkill() {
+    const name = newSkillName.trim();
+    if (!name || !currentData) return;
+    const existing = currentData.skills.find((s) => s.name.toLowerCase() === name.toLowerCase());
+    if (existing) { setCheckedIds((p) => new Set(p).add(existing.id)); setNewSkillName(""); return; }
+    const newSkill = { id: genId("skill"), name, category: newSkillCategory, aliases: [], count: 0, jobIds: [] };
+    const next = { ...currentData, skills: [...currentData.skills, newSkill] };
+    persistCurrent(next);
+    setCheckedIds((p) => new Set(p).add(newSkill.id));
+    setNewSkillName("");
+  }
+
+  async function handleSaveJob() {
+    if (!title.trim() || !text.trim() || checkedIds.size === 0 || !currentData) return;
+    setSaving(true);
+    const jobId = genId("job");
+    const job = { id: jobId, title: title.trim(), company: company.trim(), url: url.trim(), dateAdded: new Date().toISOString(), text: text.trim(), skillIds: Array.from(checkedIds) };
+    const nextSkills = currentData.skills.map((s) => checkedIds.has(s.id) ? { ...s, count: s.count + 1, jobIds: [...s.jobIds, jobId] } : s);
+    const next = { ...currentData, skills: nextSkills, jobs: [...currentData.jobs, job] };
+    await persistCurrent(next);
+    setCounts((p) => ({ ...p, [currentId]: next.jobs.length }));
+    setSaving(false); resetForm(); setTab("dashboard");
+  }
+
+  async function handleDeleteJob(jobId) {
+    const job = currentData.jobs.find((j) => j.id === jobId);
+    if (!job) return;
+    const nextSkills = currentData.skills.map((s) => job.skillIds.includes(s.id) ? { ...s, count: Math.max(0, s.count - 1), jobIds: s.jobIds.filter((id) => id !== jobId) } : s);
+    const nextJobs = currentData.jobs.filter((j) => j.id !== jobId);
+    const next = { ...currentData, skills: nextSkills, jobs: nextJobs };
+    await persistCurrent(next);
+    setCounts((p) => ({ ...p, [currentId]: nextJobs.length }));
+    if (expandedJob === jobId) setExpandedJob(null);
+  }
+
+  function copyCode() { try { navigator.clipboard.writeText(currentId); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch (e) {} }
+  function saveApiKey(v) { setApiKey(v); localStorage.setItem("anthropic_api_key", v); }
+
+  const skillsByCategory = useMemo(() => {
+    if (!currentData) return {};
+    const map = {}; currentData.categories.forEach((c) => (map[c] = []));
+    currentData.skills.forEach((s) => { (map[s.category] = map[s.category] || []).push(s); });
+    Object.keys(map).forEach((c) => map[c].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)));
+    return map;
+  }, [currentData]);
+
+  const maxCount = useMemo(() => currentData ? Math.max(1, ...currentData.skills.map((s) => s.count)) : 1, [currentData]);
+
+  const filteredJobs = useMemo(() => {
+    if (!currentData) return [];
+    const jobs = [...currentData.jobs].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+    if (!logFilter.trim()) return jobs;
+    const q = logFilter.toLowerCase();
+    return jobs.filter((j) => j.title.toLowerCase().includes(q) || j.company.toLowerCase().includes(q));
+  }, [currentData, logFilter]);
+
+  if (authLoading) return html`<div class="st-mono text-sm p-6 min-h-screen flex items-center justify-center" style=${{ background: PALETTE.bg, color: PALETTE.muted }}>connecting…</div>`;
+
+  if (!uid) {
+    return html`
+      <div class="w-full min-h-screen flex items-center justify-center font-sans" style=${{ background: PALETTE.bg, color: PALETTE.text }}>
+        <div class="rounded p-8 space-y-5 max-w-sm w-full mx-4 text-center" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>skill-frequency tracker</div>
+            <div class="st-mono text-lg font-semibold mt-1">Sign in to continue</div>
+            <div class="st-sans text-xs mt-2" style=${{ color: PALETTE.muted }}>Your dashboards stay tied to your Google account, so they follow you across devices.</div>
+          </div>
+          ${authError && html`<div class="st-mono text-xs" style=${{ color: PALETTE.danger }}>${authError}</div>`}
+          <button onClick=${handleGoogleSignIn} disabled=${signingIn}
+            class="st-sans text-sm w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded font-medium disabled:opacity-50"
+            style=${{ background: "#fff", color: "#1F1F1F" }}>
+            <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.6 3.5 24 3.5 12.7 3.5 3.5 12.7 3.5 24S12.7 44.5 24 44.5 44.5 35.3 44.5 24c0-1.2-.1-2.4-.3-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.5 29.6 3.5 24 3.5c-7.7 0-14.3 4.4-17.7 11.2z"/><path fill="#4CAF50" d="M24 44.5c5.5 0 10.4-1.9 14-5.1l-6.5-5.5c-2 1.4-4.6 2.3-7.5 2.3-5.2 0-9.6-3.3-11.3-7.9l-6.6 5.1C9.6 40 16.2 44.5 24 44.5z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.5 5.5C41.5 36 44.5 30.5 44.5 24c0-1.2-.1-2.4-.3-3.5z"/></svg>
+            ${signingIn ? "Signing in…" : "Sign in with Google"}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  const settingsPanel = showSettings && html`
+    <div class="fixed inset-0 flex items-center justify-center z-50" style=${{ background: "#000000AA" }} onClick=${() => setShowSettings(false)}>
+      <div class="rounded p-5 space-y-3 max-w-md w-full mx-4" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }} onClick=${(e) => e.stopPropagation()}>
+        <div class="st-mono text-sm font-semibold" style=${{ color: PALETTE.text }}>Settings</div>
+        <div class="st-sans text-xs" style=${{ color: PALETTE.muted }}>
+          Paste your own Anthropic API key to enable AI-detected new skills. It's stored only in your browser and never sent anywhere except directly to Anthropic's API.
+        </div>
+        <input value=${apiKey} onChange=${(e) => saveApiKey(e.target.value)} placeholder="sk-ant-..." type="password"
+          class="st-mono text-xs w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+        <${IconButton} onClick=${() => setShowSettings(false)} style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>Done<//>
+      </div>
+    </div>`;
+
+  if (screen === "home") {
+    return html`
+      <div style=${{ background: PALETTE.bg, color: PALETTE.text }} class="w-full min-h-screen font-sans">
+        ${settingsPanel}
+        <div style=${{ borderBottom: "1px solid " + PALETTE.line }} class="px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>skill-frequency tracker</div>
+            <div class="st-mono text-lg font-semibold">MY DASHBOARDS</div>
+          </div>
+          <div class="flex gap-2 items-center">
+            ${userProfile && userProfile.name && html`<span class="st-mono text-xs" style=${{ color: PALETTE.muted }}>${userProfile.name}</span>`}
+            <${IconButton} onClick=${() => setShowSettings(true)} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>⚙ Settings<//>
+            <${IconButton} onClick=${() => { setShowJoin(true); setShowCreate(false); }} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.text }}>Join with code<//>
+            <${IconButton} onClick=${() => { setShowCreate(true); setShowJoin(false); }} style=${{ background: "#F5A623", color: "#1A1200", fontWeight: 600 }}>+ New dashboard<//>
+            <${IconButton} onClick=${handleSignOut} style=${{ color: PALETTE.muted }}>Sign out<//>
+          </div>
+        </div>
+        ${homeError && html`<div class="px-5 py-2 st-mono text-xs" style=${{ background: "#2A1A1E", color: PALETTE.danger }}>${homeError}</div>`}
+        <div class="p-5 max-w-3xl mx-auto space-y-4">
+          ${showCreate && html`
+            <div class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+              <div class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>New dashboard — name it after the role</div>
+              <div class="flex gap-2 flex-wrap">
+                <input value=${newDashName} onChange=${(e) => setNewDashName(e.target.value)} placeholder="e.g. Robotics Engineer"
+                  class="st-sans text-sm px-3 py-2 rounded outline-none flex-1 min-w-[220px]" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}
+                  onKeyDown=${(e) => e.key === "Enter" && createDashboard()} />
+                <${IconButton} onClick=${createDashboard} disabled=${!newDashName.trim() || busy} className="disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>${busy ? "Creating…" : "Create"}<//>
+                <${IconButton} onClick=${() => setShowCreate(false)} style=${{ color: PALETTE.muted }}>Cancel<//>
+              </div>
+            </div>`}
+          ${showJoin && html`
+            <div class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }}>
+              <div class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>Join a shared dashboard with its code</div>
+              <div class="flex gap-2 flex-wrap">
+                <input value=${joinCode} onChange=${(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="e.g. K7XPQ2" maxlength="6"
+                  class="st-mono text-sm px-3 py-2 rounded outline-none tracking-widest" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text, width: "160px" }}
+                  onKeyDown=${(e) => e.key === "Enter" && joinDashboard()} />
+                <${IconButton} onClick=${joinDashboard} disabled=${!joinCode.trim() || busy} className="disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D", fontWeight: 600 }}>${busy ? "Joining…" : "Join"}<//>
+                <${IconButton} onClick=${() => { setShowJoin(false); setJoinError(""); }} style=${{ color: PALETTE.muted }}>Cancel<//>
+              </div>
+              ${joinError && html`<div class="st-mono text-xs" style=${{ color: PALETTE.danger }}>${joinError}</div>`}
+            </div>`}
+          ${homeLoading ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>loading your dashboards…</div>`
+            : myDashboards.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No dashboards yet. Create one for a role you're targeting, or join one someone shared with you.</div>`
+            : html`<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                ${myDashboards.map((d) => {
+                  const accent = accentForId(d.id); const count = counts[d.id]; const missing = count === null || count === undefined;
+                  return html`<div key=${d.id} class="rounded p-4 space-y-3" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line, borderLeft: "3px solid " + accent }}>
+                    <div class="flex items-start justify-between gap-2">
+                      <div>
+                        <div class="st-sans text-sm font-semibold">${d.name}</div>
+                        <div class="st-mono text-xs mt-0.5" style=${{ color: PALETTE.muted }}>${missing ? "not found" : count + " posting" + (count === 1 ? "" : "s")} · ${d.isOwner ? "owner" : "member"}</div>
+                      </div>
+                      <span class="st-mono text-xs px-2 py-0.5 rounded" style=${{ background: PALETTE.panel2, color: PALETTE.muted }}>${d.id}</span>
+                    </div>
+                    <div class="flex gap-2 flex-wrap">
+                      <${IconButton} onClick=${() => openDashboard(d)} disabled=${missing} className="disabled:opacity-40" style=${{ background: accent, color: "#101418", fontWeight: 600 }}>Open<//>
+                      <${IconButton} onClick=${() => removeFromMyList(d.id)} style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>${d.isOwner ? "Remove from list" : "Leave"}<//>
+                      ${d.isOwner && !missing && html`<${IconButton} onClick=${() => { if (confirm('Permanently delete "' + d.name + '"? This removes it for everyone.')) deletePermanently(d.id); }} style=${{ color: PALETTE.danger }}>Delete for all<//>`}
+                    </div>
+                  </div>`;
+                })}
+              </div>`}
+        </div>
+      </div>`;
+  }
+
+  const accent = currentId ? accentForId(currentId) : "#F5A623";
+
+  return html`
+    <div style=${{ background: PALETTE.bg, color: PALETTE.text }} class="w-full min-h-screen font-sans">
+      ${settingsPanel}
+      <div style=${{ borderBottom: "1px solid " + PALETTE.line }} class="px-5 py-4 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+          <button onClick=${backHome} class="st-mono text-xs px-2 py-1 rounded" style=${{ border: "1px solid " + PALETTE.line, color: PALETTE.muted }}>← dashboards</button>
+          <div>
+            <div class="st-mono text-xs tracking-widest uppercase" style=${{ color: PALETTE.faint }}>${currentIsOwner ? "owner" : "member"}</div>
+            <div class="st-mono text-lg font-semibold">${currentData ? currentData.name : "…"}</div>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          ${currentData && html`<div class="st-mono text-xs" style=${{ color: PALETTE.muted }}><span style=${{ color: PALETTE.text, fontWeight: 600 }}>${currentData.jobs.length}</span> postings</div>`}
+          <button onClick=${copyCode} class="st-mono text-xs px-2 py-1 rounded tracking-widest" style=${{ border: "1px solid " + accent, color: accent }}>${copied ? "copied ✓" : "code: " + currentId}</button>
+        </div>
+      </div>
+      ${dashError && html`<div class="px-5 py-2 st-mono text-xs" style=${{ background: "#2A1A1E", color: PALETTE.danger }}>${dashError}</div>`}
+      ${dashLoading ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-mono text-sm">loading dashboard…</div>`
+      : !currentData ? html`<div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px] flex items-center justify-center st-sans text-sm">${dashError || "This dashboard is unavailable."}</div>`
+      : html`
+        <div class="px-5 pt-4 flex gap-1">
+          ${[{ id: "add", label: "Add Job" }, { id: "dashboard", label: "Dashboard" }, { id: "log", label: "Job Log" }].map((t) => html`
+            <button key=${t.id} onClick=${() => setTab(t.id)} class="st-mono text-xs uppercase tracking-wider px-4 py-2 rounded-t"
+              style=${{ background: tab === t.id ? PALETTE.panel : "transparent", color: tab === t.id ? PALETTE.text : PALETTE.muted, borderBottom: tab === t.id ? "2px solid " + accent : "2px solid transparent" }}>${t.label}</button>`)}
+        </div>
+        <div style=${{ background: PALETTE.panel }} class="p-5 min-h-[500px]">
+          ${tab === "add" && html`
+            <div class="max-w-3xl mx-auto space-y-4">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <input value=${title} onChange=${(e) => setTitle(e.target.value)} placeholder="Job title *" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                <input value=${company} onChange=${(e) => setCompany(e.target.value)} placeholder="Company (optional)" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                <input value=${url} onChange=${(e) => setUrl(e.target.value)} placeholder="LinkedIn URL (optional)" class="st-sans text-sm px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+              </div>
+              <textarea value=${text} onChange=${(e) => { setText(e.target.value); setAnalyzed(false); }} placeholder="Paste the full job description here…" rows="8"
+                class="st-sans text-sm w-full px-3 py-2 rounded outline-none resize-y" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}></textarea>
+              <div class="flex justify-end items-center gap-3">
+                ${aiLoading && html`<span class="st-mono text-xs" style=${{ color: PALETTE.muted }}>🤖 scanning for untracked skills…</span>`}
+                <button onClick=${handleAnalyze} disabled=${!text.trim()} class="st-mono text-xs uppercase tracking-wider px-4 py-2 rounded font-semibold disabled:opacity-40" style=${{ background: "#F5A623", color: "#1A1200" }}>Find skills →</button>
+              </div>
+              ${aiError && html`<div class="st-mono text-xs text-right" style=${{ color: PALETTE.muted }}>${aiError}</div>`}
+              ${analyzed && html`
+                <div class="space-y-4 pt-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                  <div class="st-mono text-xs pt-3" style=${{ color: PALETTE.muted }}>${checkedIds.size} skill${checkedIds.size === 1 ? "" : "s"} selected — uncheck false matches, check anything missed.</div>
+                  ${currentData.categories.map((cat) => {
+                    const list = skillsByCategory[cat] || [];
+                    if (list.length === 0) return null;
+                    const color = CATEGORY_COLORS[cat] || PALETTE.muted;
+                    return html`<div key=${cat}>
+                      <div class="flex items-center gap-2 mb-2"><span class="inline-block w-2 h-2 rounded-full" style=${{ background: color }}></span><span class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>${cat}</span></div>
+                      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        ${list.map((skill) => {
+                          const checked = checkedIds.has(skill.id); const isNew = aiNewIds.has(skill.id);
+                          return html`<label key=${skill.id} class="st-sans text-sm flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer" style=${{ background: checked ? color + "1A" : "transparent", border: "1px solid " + (checked ? color : PALETTE.line) }}>
+                            <input type="checkbox" checked=${checked} onChange=${() => toggleSkill(skill.id)} />
+                            <span style=${{ color: checked ? PALETTE.text : PALETTE.muted }}>${skill.name}</span>
+                            ${isNew && html`<span class="st-mono text-[10px] px-1 rounded" style=${{ background: color + "33", color: color }}>new</span>`}
+                          </label>`;
+                        })}
+                      </div>
+                    </div>`;
+                  })}
+                  <div class="pt-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                    <div class="st-mono text-xs uppercase tracking-wider mb-2" style=${{ color: PALETTE.muted }}>Skill or notice not listed?</div>
+                    <div class="flex flex-wrap gap-2">
+                      <input value=${newSkillName} onChange=${(e) => setNewSkillName(e.target.value)} placeholder="Name" class="st-sans text-sm px-3 py-1.5 rounded outline-none flex-1 min-w-[140px]" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+                      <select value=${newSkillCategory} onChange=${(e) => setNewSkillCategory(e.target.value)} class="st-sans text-sm px-3 py-1.5 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }}>
+                        ${currentData.categories.map((c) => html`<option key=${c} value=${c}>${c}</option>`)}
+                      </select>
+                      <button onClick=${handleAddNewSkill} disabled=${!newSkillName.trim()} class="st-mono text-xs uppercase px-3 py-1.5 rounded font-semibold disabled:opacity-40" style=${{ background: PALETTE.line, color: PALETTE.text }}>+ Add</button>
+                    </div>
+                  </div>
+                  <div class="flex justify-end pt-2">
+                    <button onClick=${handleSaveJob} disabled=${!title.trim() || checkedIds.size === 0 || saving} class="st-mono text-xs uppercase tracking-wider px-5 py-2.5 rounded font-semibold disabled:opacity-40" style=${{ background: "#4FD1C5", color: "#08201D" }}>${saving ? "Saving…" : "Save posting"}</button>
+                  </div>
+                </div>`}
+            </div>`}
+          ${tab === "dashboard" && html`
+            <div class="max-w-4xl mx-auto space-y-6">
+              ${currentData.jobs.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No postings logged yet.</div>`
+                : currentData.categories.map((cat) => {
+                    const list = (skillsByCategory[cat] || []).filter((s) => s.count > 0);
+                    const color = CATEGORY_COLORS[cat] || PALETTE.muted;
+                    if (list.length === 0) return null;
+                    return html`<div key=${cat}>
+                      <div class="flex items-center gap-2 mb-3"><span class="inline-block w-2 h-2 rounded-full" style=${{ background: color }}></span><span class="st-mono text-xs uppercase tracking-wider" style=${{ color: PALETTE.muted }}>${cat}</span></div>
+                      <div class="space-y-1.5">
+                        ${list.map((skill) => {
+                          const pct = Math.round((skill.count / maxCount) * 100); const isOpen = expandedSkill === skill.id;
+                          return html`<div key=${skill.id}>
+                            <button onClick=${() => setExpandedSkill(isOpen ? null : skill.id)} class="w-full text-left">
+                              <div class="flex items-center gap-3">
+                                <span class="st-sans text-sm w-40 shrink-0 truncate" style=${{ color: PALETTE.text }}>${skill.name}</span>
+                                <div class="st-tick flex-1 h-5 rounded-sm relative overflow-hidden" style=${{ background: PALETTE.panel2 }}>
+                                  <div class="h-full rounded-sm transition-all" style=${{ width: pct + "%", background: color }}></div>
+                                </div>
+                                <span class="st-mono text-xs w-24 text-right shrink-0" style=${{ color: PALETTE.muted }}>${skill.count}/${currentData.jobs.length} posts</span>
+                              </div>
+                            </button>
+                            ${isOpen && html`<div class="mt-1 ml-40 mb-2 pl-3 st-sans text-xs space-y-1" style=${{ borderLeft: "2px solid " + color, color: PALETTE.muted }}>
+                              ${skill.jobIds.map((jid) => {
+                                const job = currentData.jobs.find((j) => j.id === jid);
+                                if (!job) return null;
+                                return html`<div key=${jid} class="cursor-pointer hover:underline" onClick=${() => { setTab("log"); setExpandedJob(jid); }}>${job.title}${job.company ? " — " + job.company : ""}</div>`;
+                              })}
+                            </div>`}
+                          </div>`;
+                        })}
+                      </div>
+                    </div>`;
+                  })}
+            </div>`}
+          ${tab === "log" && html`
+            <div class="max-w-3xl mx-auto space-y-3">
+              <input value=${logFilter} onChange=${(e) => setLogFilter(e.target.value)} placeholder="Filter by title or company…" class="st-sans text-sm w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
+              ${filteredJobs.length === 0 ? html`<div class="st-sans text-sm text-center py-16" style=${{ color: PALETTE.muted }}>No postings match yet.</div>`
+                : filteredJobs.map((job) => {
+                    const isOpen = expandedJob === job.id;
+                    return html`<div key=${job.id} class="rounded" style=${{ border: "1px solid " + PALETTE.line, background: PALETTE.panel2 }}>
+                      <div class="px-3 py-2.5 flex items-center justify-between gap-3 cursor-pointer" onClick=${() => setExpandedJob(isOpen ? null : job.id)}>
+                        <div>
+                          <div class="st-sans text-sm font-medium" style=${{ color: PALETTE.text }}>${job.title}</div>
+                          <div class="st-mono text-xs" style=${{ color: PALETTE.muted }}>${job.company || "—"} · ${new Date(job.dateAdded).toLocaleDateString()} · ${job.skillIds.length} tags</div>
+                        </div>
+                        <button onClick=${(e) => { e.stopPropagation(); handleDeleteJob(job.id); }} class="st-mono text-xs px-2 py-1 rounded shrink-0" style=${{ color: PALETTE.danger, border: "1px solid " + PALETTE.line }}>delete</button>
+                      </div>
+                      ${isOpen && html`<div class="px-3 pb-3 space-y-2" style=${{ borderTop: "1px solid " + PALETTE.line }}>
+                        ${job.url && html`<a href=${job.url} target="_blank" rel="noreferrer" class="st-mono text-xs underline block pt-2" style=${{ color: "#4FD1C5" }}>${job.url}</a>`}
+                        <div class="flex flex-wrap gap-1.5 pt-1">
+                          ${job.skillIds.map((sid) => {
+                            const s = currentData.skills.find((sk) => sk.id === sid);
+                            if (!s) return null;
+                            const color = CATEGORY_COLORS[s.category] || PALETTE.muted;
+                            return html`<span key=${sid} class="st-mono text-xs px-2 py-0.5 rounded-full" style=${{ background: color + "22", color: color }}>${s.name}</span>`;
+                          })}
+                        </div>
+                        <div class="st-sans text-xs whitespace-pre-wrap max-h-64 overflow-y-auto pt-2" style=${{ color: PALETTE.muted }}>${job.text}</div>
+                      </div>`}
+                    </div>`;
+                  })}
+            </div>`}
+        </div>`}
+    </div>`;
+}
+
+const root = createRoot(document.getElementById("root"));
+root.render(html`<${App} />`);
+</script>
+</body>
+</html>
