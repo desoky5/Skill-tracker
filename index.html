@@ -6,7 +6,7 @@
 <title>Robotics Skill Tracker</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght=400;500;600;700&family=Inter:wght@400;500;600&display=swap');
   body { margin: 0; background:#0F1419; }
   .st-mono { font-family: 'IBM Plex Mono', monospace; }
   .st-sans { font-family: 'Inter', sans-serif; }
@@ -39,10 +39,7 @@ import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore
 
 const html = htm.bind(React.createElement);
 
-/* ============ 1. FILL IN YOUR OWN FIREBASE CONFIG BELOW ============
-   Get this from: Firebase console -> Project settings -> Your apps -> Web app
-   This object is NOT secret -- it's fine that it's visible in this file.
-   Security is enforced by your Firestore rules, not by hiding this. */
+/* ============ FIREBASE CONFIG ============ */
 const firebaseConfig = {
   apiKey: "AIzaSyA7f95OKms0oMdUzsnE4e_2NBdlLQJjbWs",
   authDomain: "skill-frequency-tracker.firebaseapp.com",
@@ -51,7 +48,6 @@ const firebaseConfig = {
   messagingSenderId: "654121219345",
   appId: "1:654121219345:web:58c70d14e71679964388b0",
 };
-/* ===================================================================== */
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -123,7 +119,7 @@ function findMatchedSkillIds(skills, text) {
   return matched;
 }
 
-/* ---------- Firestore-backed storage helpers (replaces window.storage) ---------- */
+/* ---------- Firestore-backed storage helpers ---------- */
 async function getUserDashboards(uid) {
   const snap = await getDoc(doc(db, "users", uid));
   return snap.exists() ? (snap.data().dashboards || []) : [];
@@ -152,7 +148,7 @@ function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
-  const [signingIn, setSigningIn} = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
   const [screen, setScreen] = useState("home");
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeError, setHomeError] = useState("");
@@ -323,7 +319,7 @@ function App() {
         jobText,
         '"""',
         "",
-        'Return ONLY a valid JSON array (no markdown block formatting, no intro prose) like: [{"name": "...", "category": "..."}]. Only genuinely new items. If none, return [].'
+        'Return ONLY a valid JSON array matching exactly this format: [{"name": "...", "category": "..."}]. Only genuinely new items. If none, return [].'
       ].join("\n");
       
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -333,7 +329,7 @@ function App() {
           "Authorization": `Bearer ${apiKey.trim()}`
         },
         body: JSON.stringify({ 
-          model: "openai/gpt-oss-20b", 
+          model: "llama-3.3-70b-versatile", 
           response_format: { type: "json_object" },
           messages: [{ role: "user", content: prompt }],
           temperature: 0.1
@@ -456,7 +452,7 @@ function App() {
       <div class="rounded p-5 space-y-3 max-w-md w-full mx-4" style=${{ background: PALETTE.panel, border: "1px solid " + PALETTE.line }} onClick=${(e) => e.stopPropagation()}>
         <div class="st-mono text-sm font-semibold" style=${{ color: PALETTE.text }}>Settings</div>
         <div class="st-sans text-xs" style=${{ color: PALETTE.muted }}>
-          Paste your own <b>free Groq API key</b> to enable AI-detected new skills. It is stored only safely inside your browser and never sent anywhere else.
+          Paste your own <b>free Groq API key</b> to enable AI-detected new skills. It is stored safely inside your browser and never sent anywhere else.
         </div>
         <input value=${apiKey} onChange=${(e) => saveApiKey(e.target.value)} placeholder="gsk_..." type="password"
           class="st-mono text-xs w-full px-3 py-2 rounded outline-none" style=${{ background: PALETTE.panel2, border: "1px solid " + PALETTE.line, color: PALETTE.text }} />
