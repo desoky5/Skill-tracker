@@ -2,12 +2,12 @@
 
 A minimalist, high-fidelity web dashboard engineered for roboticists and developers to track tech stack demand dynamically. By compiling and parsing industry job descriptions, this tool aggregates keyword frequencies across custom categories, providing data-driven insight into exactly which competencies to prioritize in your portfolio or resume.
 
----
-
 ## 🚀 Key Features
 
 - **Granular Skill Domains:** Organizes your tracking data into preconfigured categories (Programming Languages, Tools & Frameworks, Simulation Programs, Concepts & Methods, and Preferences/Notices).
 - **Persistent Distributed Backing:** Scaled instantly over a real-time, zero-latency Firebase sync layer mapping securely to your authenticated Google credentials.
+- **🔄 Real-Time Peer Collaboration (New):** Share your unique 6-character dashboard workspace code with colleagues. Anyone connected to the dashboard can log job postings simultaneously, with metric chart changes syncing across everyone's screens instantly without needing a page refresh.
+- **👤 Contributor Identity Stamps:** Every logged job entry is tagged with the specific team member's profile name, making it seamless to see who discovered which job vacancy.
 - **Bi-Modal Skill Extraction Parsing Engine:**
   - **Local Substring Engine:** Parses your text inputs instantly via strict word-boundary regular expressions matching against existing data models.
   - **Groq AI-Driven Extraction Matrix:** Utilizes state-of-the-art open-source LLMs (`llama-3.3-70b-versatile`) to read deep context, identifying semantic variants of active skill matrices and automatically extracting entirely new technical concepts hidden in the job descriptions.
@@ -16,11 +16,11 @@ A minimalist, high-fidelity web dashboard engineered for roboticists and develop
 
 ## 📈 Getting the Most Benefit From Your Tracker
 
-To build a truly data-driven roadmap for your technical progression, use the following framework:
+To build a truly data-driven roadmap for your technical progression, use the following collaborative framework:
 
-1. **Targeting an Industry Sector:** Choose 15–20 high-value job openings matching your desired next role (e.g., *Autonomous Navigation Engineer*, *Robotics Software Architect*, *Controls Intern*).
-2. **Systematically log positions:** Paste descriptions directly from LinkedIn, Indeed, or company boards into the **Add Job** section.
-3. **Analyze & Adapt:** Watch the frequency bars rise. If a tool you don't know (e.g., `EtherCAT`, `Nav2`, or `Docker`) appears across more than 40% of logged vacancies, it represents an immediate gap in your skill stack.
+1. **Crowdsource the Hunt:** Don't search alone. Generate a share code, pass it to your peers at **E-JUST** or your engineering study groups, and split up the target companies. 
+2. **Systematically log positions:** Have everyone paste descriptions directly from LinkedIn, Indeed, or company boards into the **Add Job** section. The interface will automatically attribute the log to whoever pasted it.
+3. **Analyze & Adapt:** Watch the frequency bars rise in real-time. If a tool you don't know (e.g., `EtherCAT`, `Nav2`, or `Docker`) appears across more than 40% of your shared logs, it represents an immediate gap in your skill stack.
 4. **Tailor Your Applications:** Use the generated metric chart to organize your resume. Place the highest frequency tools prominently at the top of your qualifications layout.
 
 ---
