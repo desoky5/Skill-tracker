@@ -152,7 +152,7 @@ function App() {
   const [userProfile, setUserProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
-  const [signingIn, setSigningIn] = useState(false);
+  const [signingIn, setSigningIn} = useState(false);
   const [screen, setScreen] = useState("home");
   const [homeLoading, setHomeLoading] = useState(true);
   const [homeError, setHomeError] = useState("");
@@ -333,7 +333,7 @@ function App() {
           "Authorization": `Bearer ${apiKey.trim()}`
         },
         body: JSON.stringify({ 
-          model: "llama3-8b-8192", 
+          model: "openai/gpt-oss-20b", 
           response_format: { type: "json_object" },
           messages: [{ role: "user", content: prompt }],
           temperature: 0.1
@@ -346,7 +346,6 @@ function App() {
       const responseText = data.choices[0].message.content.trim();
       let suggestions = [];
       try { 
-        // Handles if the model outputs a root array or an object containing an array
         const parsed = JSON.parse(responseText);
         suggestions = Array.isArray(parsed) ? parsed : (parsed.suggestions || parsed.skills || []); 
       } catch (e) { suggestions = []; }
